@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { listChats, createChat, deleteChat, type Chat } from '../api';
 import ChatListItem from '../components/ChatListItem';
@@ -12,9 +12,22 @@ export default function ChatList() {
   const load = () => listChats().then(setChats);
   useEffect(() => { load(); }, []);
 
-  const handleCreate = async () => {
-    if (!folder.trim()) return;
-    const chat = await createChat(folder.trim());
+  // Unique recent directories from existing chats, most recent first
+  const recentDirs = useMemo(() => {
+    const seen = new Set<string>();
+    return chats
+      .filter(c => {
+        if (seen.has(c.folder)) return false;
+        seen.add(c.folder);
+        return true;
+      })
+      .map(c => c.folder);
+  }, [chats]);
+
+  const handleCreate = async (dir?: string) => {
+    const target = dir || folder.trim();
+    if (!target) return;
+    const chat = await createChat(target);
     setFolder('');
     setShowNew(false);
     navigate(`/chat/${chat.id}`);
@@ -54,35 +67,73 @@ export default function ChatList() {
         <div style={{
           padding: '12px 20px',
           borderBottom: '1px solid var(--border)',
-          display: 'flex',
-          gap: 8,
         }}>
-          <input
-            value={folder}
-            onChange={e => setFolder(e.target.value)}
-            placeholder="Project folder path (e.g. /home/user/myproject)"
-            onKeyDown={e => e.key === 'Enter' && handleCreate()}
-            style={{
-              flex: 1,
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 8,
-              padding: '10px 12px',
-              fontSize: 14,
-            }}
-          />
-          <button
-            onClick={handleCreate}
-            style={{
-              background: 'var(--accent)',
-              color: '#fff',
-              padding: '10px 16px',
-              borderRadius: 8,
-              fontSize: 14,
-            }}
-          >
-            Create
-          </button>
+          {recentDirs.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+                Recent directories
+              </div>
+              {recentDirs.map(dir => (
+                <button
+                  key={dir}
+                  onClick={() => handleCreate(dir)}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    background: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    padding: '10px 12px',
+                    fontSize: 14,
+                    marginBottom: 4,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {dir}
+                </button>
+              ))}
+              <div style={{
+                fontSize: 12,
+                color: 'var(--text-muted)',
+                margin: '10px 0 6px',
+              }}>
+                Or enter a new path
+              </div>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={folder}
+              onChange={e => setFolder(e.target.value)}
+              placeholder="Project folder path (e.g. /home/user/myproject)"
+              onKeyDown={e => e.key === 'Enter' && handleCreate()}
+              autoFocus
+              style={{
+                flex: 1,
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: '10px 12px',
+                fontSize: 14,
+              }}
+            />
+            <button
+              onClick={() => handleCreate()}
+              disabled={!folder.trim()}
+              style={{
+                background: folder.trim() ? 'var(--accent)' : 'var(--border)',
+                color: '#fff',
+                padding: '10px 16px',
+                borderRadius: 8,
+                fontSize: 14,
+              }}
+            >
+              Create
+            </button>
+          </div>
         </div>
       )}
 
