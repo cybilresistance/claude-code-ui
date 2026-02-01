@@ -5,3 +5,4 @@ backend/data/
 *.db-journal
 *.db-wal
 .env
+.env.local
