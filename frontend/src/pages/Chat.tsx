@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getChat, getMessages, getPending, respondToChat, type Chat as ChatType, type ParsedMessage } from '../api';
+import { getChat, getMessages, getPending, respondToChat, getSessionStatus, type Chat as ChatType, type ParsedMessage, type SessionStatus } from '../api';
 import MessageBubble from '../components/MessageBubble';
 import PromptInput from '../components/PromptInput';
 import FeedbackPanel, { type PendingAction } from '../components/FeedbackPanel';
@@ -12,6 +12,7 @@ export default function Chat() {
   const [messages, setMessages] = useState<ParsedMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -91,6 +92,25 @@ export default function Chat() {
     }
   }, [id, readSSE]);
 
+  // Check session status and auto-connect to active sessions
+  const checkSessionStatus = useCallback(async () => {
+    if (!id) return;
+    try {
+      const status = await getSessionStatus(id);
+      setSessionStatus(status);
+
+      // Auto-connect if session is active (web or CLI)
+      if (status.active && (status.type === 'web' || status.type === 'cli')) {
+        if (!abortRef.current) { // Avoid duplicate connections
+          setStreaming(true);
+          connectToStream();
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to check session status:', error);
+    }
+  }, [id, connectToStream]);
+
   useEffect(() => {
     getChat(id!).then(setChat);
     getMessages(id!).then(setMessages);
@@ -100,16 +120,25 @@ export default function Chat() {
         setStreaming(true);
       }
     });
-  }, [id]);
+
+    // Check session status and auto-connect
+    checkSessionStatus();
+  }, [id, checkSessionStatus]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
   const handleSend = useCallback(async (prompt: string) => {
-    setStreaming(true);
     setMessages(prev => [...prev, { role: 'user', type: 'text', content: prompt }]);
 
+    // If there's already a streaming connection, stop it first
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+
+    setStreaming(true);
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -131,10 +160,14 @@ export default function Chat() {
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         setMessages(prev => [...prev, { role: 'assistant', type: 'text', content: `Error: ${err.message}` }]);
+        setStreaming(false);
       }
     } finally {
-      setStreaming(false);
-      abortRef.current = null;
+      // Only stop streaming if this is still the current request
+      if (abortRef.current === controller) {
+        setStreaming(false);
+        abortRef.current = null;
+      }
     }
   }, [id, readSSE]);
 
@@ -205,8 +238,22 @@ export default function Chat() {
           ←
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {chat?.folder.split('/').pop() || 'Chat'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {chat?.folder.split('/').pop() || 'Chat'}
+            </div>
+            {sessionStatus?.active && (
+              <div style={{
+                fontSize: 11,
+                padding: '2px 6px',
+                borderRadius: 4,
+                background: sessionStatus.type === 'web' ? 'var(--accent)' : '#10b981',
+                color: '#fff',
+                fontWeight: 500,
+              }}>
+                {sessionStatus.type === 'web' ? '🌐 Active' : '💻 CLI'}
+              </div>
+            )}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {chat?.folder}
@@ -256,8 +303,11 @@ export default function Chat() {
           </div>
         ))}
         {streaming && (
-          <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '8px 0' }}>
-            Claude is working...
+          <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: '8px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div>Claude is working...</div>
+            <div style={{ fontSize: 11, opacity: 0.7 }}>
+              (You can send another message anytime)
+            </div>
           </div>
         )}
         <div ref={bottomRef} />
@@ -266,7 +316,7 @@ export default function Chat() {
       {pendingAction ? (
         <FeedbackPanel action={pendingAction} onRespond={handleRespond} />
       ) : (
-        <PromptInput onSend={handleSend} disabled={streaming} />
+        <PromptInput onSend={handleSend} disabled={false} />
       )}
     </div>
   );

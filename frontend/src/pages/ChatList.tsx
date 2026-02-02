@@ -1,15 +1,32 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listChats, createChat, deleteChat, type Chat } from '../api';
+import { listChats, createChat, deleteChat, getSessionStatus, type Chat, type SessionStatus } from '../api';
 import ChatListItem from '../components/ChatListItem';
 
 export default function ChatList({ onLogout }: { onLogout: () => void }) {
   const [chats, setChats] = useState<Chat[]>([]);
+  const [sessionStatuses, setSessionStatuses] = useState<Map<string, SessionStatus>>(new Map());
   const [folder, setFolder] = useState('');
   const [showNew, setShowNew] = useState(false);
   const navigate = useNavigate();
 
-  const load = () => listChats().then(setChats);
+  const load = async () => {
+    const chats = await listChats();
+    setChats(chats);
+
+    // Fetch session statuses for all chats
+    const statuses = new Map<string, SessionStatus>();
+    await Promise.all(chats.map(async (chat) => {
+      try {
+        const status = await getSessionStatus(chat.id);
+        if (status.active) {
+          statuses.set(chat.id, status);
+        }
+      } catch {} // Ignore errors for individual status checks
+    }));
+    setSessionStatuses(statuses);
+  };
+
   useEffect(() => { load(); }, []);
 
   // Unique recent directories from existing chats, most recent first
@@ -164,6 +181,7 @@ export default function ChatList({ onLogout }: { onLogout: () => void }) {
             chat={chat}
             onClick={() => navigate(`/chat/${chat.id}`)}
             onDelete={() => handleDelete(chat.id)}
+            sessionStatus={sessionStatuses.get(chat.id)}
           />
         ))}
       </div>

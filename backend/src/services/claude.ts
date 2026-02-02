@@ -82,6 +82,9 @@ export async function sendMessage(chatId: string, prompt: string): Promise<Event
   const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(chatId) as any;
   if (!chat) throw new Error('Chat not found');
 
+  // Stop any existing session for this chat (web or CLI monitoring)
+  stopSession(chatId);
+
   const emitter = new EventEmitter();
   const abortController = new AbortController();
   activeSessions.set(chatId, { abortController, emitter });
