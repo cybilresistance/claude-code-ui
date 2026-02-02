@@ -1,6 +1,11 @@
+import dotenv from 'dotenv';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+// Load .env from project root
+const __rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+dotenv.config({ path: path.join(__rootDir, '.env') });
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { chatsRouter } from './routes/chats.js';
