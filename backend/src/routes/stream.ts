@@ -27,6 +27,9 @@ async function generateAndSaveTitle(chatId: string, prompt: string): Promise<voi
     meta.title = result.content;
     db.prepare('UPDATE chats SET metadata = ?, updated_at = ? WHERE id = ?')
       .run(JSON.stringify(meta), new Date().toISOString(), chatId);
+    console.log(`[OpenRouter] Generated title for ${chatId}: "${result.content}"`);
+  } else {
+    console.warn('[OpenRouter] Title generation failed:', result.error);
   }
 }
 
