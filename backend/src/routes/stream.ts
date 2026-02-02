@@ -198,9 +198,6 @@ streamRouter.get('/:id/stream', (req, res) => {
   req.on('close', () => {
     unwatchFile(logPath, watchHandler);
   });
-
-  // Send initial connection event
-  res.write(`data: ${JSON.stringify({ type: 'text', content: 'Connected to CLI session...' })}\n\n`);
 });
 
 // Check for a pending request (for page refresh reconnection)
