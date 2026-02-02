@@ -1,7 +1,34 @@
 import { Router } from 'express';
 import { sendMessage, getActiveSession, stopSession, respondToPermission, hasPendingRequest, getPendingRequest, type StreamEvent } from '../services/claude.js';
+import { OpenRouterClient } from '../services/openrouter-client.js';
+import db from '../db.js';
 
 export const streamRouter = Router();
+
+/**
+ * Generate a chat title from the first user message using OpenRouter,
+ * then save it into the chat's metadata JSON.
+ */
+async function generateAndSaveTitle(chatId: string, prompt: string): Promise<void> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return;
+
+  const client = new OpenRouterClient(apiKey);
+  if (!client.isReady()) return;
+
+  const chat = db.prepare('SELECT metadata FROM chats WHERE id = ?').get(chatId) as { metadata: string } | undefined;
+  if (!chat) return;
+
+  const meta = JSON.parse(chat.metadata || '{}');
+  if (meta.title) return; // already has a title
+
+  const result = await client.generateChatTitle({ userMessage: prompt });
+  if (result.success && result.content) {
+    meta.title = result.content;
+    db.prepare('UPDATE chats SET metadata = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(meta), new Date().toISOString(), chatId);
+  }
+}
 
 // Send a message and get SSE stream back
 streamRouter.post('/:id/message', async (req, res) => {
@@ -10,6 +37,11 @@ streamRouter.post('/:id/message', async (req, res) => {
 
   try {
     const emitter = await sendMessage(req.params.id, prompt);
+
+    // Fire-and-forget: generate title from first message
+    generateAndSaveTitle(req.params.id, prompt).catch(err =>
+      console.error('[OpenRouter] Title generation failed:', err)
+    );
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',

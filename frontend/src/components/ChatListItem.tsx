@@ -12,6 +12,14 @@ export default function ChatListItem({ chat, onClick, onDelete }: Props) {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 
+  let title: string | undefined;
+  try {
+    const meta = JSON.parse(chat.metadata || '{}');
+    title = meta.title;
+  } catch {}
+
+  const displayName = title || folderName;
+
   return (
     <div
       onClick={onClick}
@@ -26,7 +34,7 @@ export default function ChatListItem({ chat, onClick, onDelete }: Props) {
     >
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ fontSize: 15, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {folderName}
+          {displayName}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {chat.folder}
