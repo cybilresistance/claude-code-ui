@@ -67,3 +67,16 @@ export async function respondToChat(
     body: JSON.stringify({ allow, updatedInput, updatedPermissions }),
   });
 }
+
+export interface SessionStatus {
+  active: boolean;
+  type: 'web' | 'cli' | 'inactive' | 'none';
+  hasPending?: boolean;
+  lastActivity?: string;
+  fileSize?: number;
+}
+
+export async function getSessionStatus(id: string): Promise<SessionStatus> {
+  const res = await fetch(`${BASE}/chats/${id}/status`, { credentials: 'include' });
+  return res.json();
+}

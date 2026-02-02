@@ -1,12 +1,13 @@
-import type { Chat } from '../api';
+import type { Chat, SessionStatus } from '../api';
 
 interface Props {
   chat: Chat;
   onClick: () => void;
   onDelete: () => void;
+  sessionStatus?: SessionStatus;
 }
 
-export default function ChatListItem({ chat, onClick, onDelete }: Props) {
+export default function ChatListItem({ chat, onClick, onDelete, sessionStatus }: Props) {
   const folderName = chat.folder.split('/').pop() || chat.folder;
   const time = new Date(chat.updated_at).toLocaleDateString(undefined, {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -33,8 +34,22 @@ export default function ChatListItem({ chat, onClick, onDelete }: Props) {
       }}
     >
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 15, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {displayName}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontSize: 15, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {displayName}
+          </div>
+          {sessionStatus?.active && (
+            <div style={{
+              fontSize: 10,
+              padding: '1px 4px',
+              borderRadius: 3,
+              background: sessionStatus.type === 'web' ? 'var(--accent)' : '#10b981',
+              color: '#fff',
+              fontWeight: 500,
+            }}>
+              {sessionStatus.type === 'web' ? '🌐' : '💻'}
+            </div>
+          )}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {chat.folder}
