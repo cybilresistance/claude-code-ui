@@ -31,4 +31,18 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS message_queue (
+    id TEXT PRIMARY KEY,
+    chat_id TEXT NOT NULL,
+    user_message TEXT NOT NULL,
+    scheduled_time TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    retry_count INTEGER DEFAULT 0,
+    error_message TEXT DEFAULT NULL,
+    FOREIGN KEY (chat_id) REFERENCES chats (id) ON DELETE CASCADE
+  )
+`);
+
 export default db;

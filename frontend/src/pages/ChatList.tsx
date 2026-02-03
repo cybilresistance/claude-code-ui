@@ -73,6 +73,19 @@ export default function ChatList({ onLogout }: { onLogout: () => void }) {
         <h1 style={{ fontSize: 20, fontWeight: 600 }}>Claude Code</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
+            onClick={() => navigate('/queue')}
+            style={{
+              background: 'var(--bg-secondary)',
+              color: 'var(--text)',
+              padding: '8px 16px',
+              borderRadius: 8,
+              fontSize: 14,
+              border: '1px solid var(--border)',
+            }}
+          >
+            📋 Queue
+          </button>
+          <button
             onClick={() => setShowNew(!showNew)}
             style={{
               background: 'var(--accent)',

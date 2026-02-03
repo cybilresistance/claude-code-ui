@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getChat, getMessages, getPending, respondToChat, getSessionStatus, uploadImages, type Chat as ChatType, type ParsedMessage, type SessionStatus } from '../api';
+import { getChat, getMessages, getPending, respondToChat, getSessionStatus, uploadImages, addToBacklog, type Chat as ChatType, type ParsedMessage, type SessionStatus } from '../api';
 import MessageBubble from '../components/MessageBubble';
 import PromptInput from '../components/PromptInput';
 import FeedbackPanel, { type PendingAction } from '../components/FeedbackPanel';
+import ScheduleModal from '../components/ScheduleModal';
 
 export default function Chat() {
   const { id } = useParams<{ id: string }>();
@@ -14,6 +15,8 @@ export default function Chat() {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
   const [networkError, setNetworkError] = useState<string | null>(null);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleMessage, setScheduleMessage] = useState('');
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -38,6 +41,8 @@ export default function Chat() {
             const event = JSON.parse(line.slice(6));
             if (event.type === 'done') {
               setStreaming(false);
+              // Refresh chat data when stream ends to display updated title
+              getChat(id!).then(setChat);
               return;
             }
             if (event.type === 'error') {
@@ -226,8 +231,17 @@ export default function Chat() {
 
   const handleReconnect = useCallback(async () => {
     setNetworkError(null);
+    // Refetch chat data and messages to capture any missing content
+    getChat(id!).then(setChat);
+    getMessages(id!).then(setMessages);
+    getPending(id!).then(p => {
+      if (p) {
+        setPendingAction(p);
+        setStreaming(true);
+      }
+    });
     await checkSessionStatus();
-  }, [checkSessionStatus]);
+  }, [checkSessionStatus, id]);
 
   // Check if there are any TodoWrite tool calls in the conversation
   const hasTodoList = useMemo(() => {
@@ -261,6 +275,24 @@ export default function Chat() {
       }
     }
   }, [messages]);
+
+  const handleSchedule = useCallback((message: string, images?: File[]) => {
+    setScheduleMessage(message);
+    setShowScheduleModal(true);
+    // TODO: Handle images in scheduling
+  }, []);
+
+  const handleBacklog = useCallback(async (message: string, images?: File[]) => {
+    if (!id) return;
+    try {
+      await addToBacklog(id, message);
+      // TODO: Handle images in backlog
+      // Optionally show a toast notification
+      console.log('Added to backlog:', message);
+    } catch (error) {
+      console.error('Failed to add to backlog:', error);
+    }
+  }, [id]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -403,8 +435,18 @@ export default function Chat() {
       {pendingAction ? (
         <FeedbackPanel action={pendingAction} onRespond={handleRespond} />
       ) : (
-        <PromptInput onSend={handleSend} disabled={false} />
+        <PromptInput onSend={handleSend} disabled={false} onSchedule={handleSchedule} onBacklog={handleBacklog} />
       )}
+
+      <ScheduleModal
+        isOpen={showScheduleModal}
+        onClose={() => {
+          setShowScheduleModal(false);
+          setScheduleMessage('');
+        }}
+        chatId={id!}
+        initialMessage={scheduleMessage}
+      />
     </div>
   );
 }

@@ -4,9 +4,11 @@ import ImageUpload from './ImageUpload';
 interface Props {
   onSend: (prompt: string, images?: File[]) => void;
   disabled: boolean;
+  onSchedule?: (prompt: string, images?: File[]) => void;
+  onBacklog?: (prompt: string, images?: File[]) => void;
 }
 
-export default function PromptInput({ onSend, disabled }: Props) {
+export default function PromptInput({ onSend, disabled, onSchedule, onBacklog }: Props) {
   const [value, setValue] = useState('');
   const [images, setImages] = useState<File[]>([]);
   const [showImageUpload, setShowImageUpload] = useState(false);
@@ -47,6 +49,26 @@ export default function PromptInput({ onSend, disabled }: Props) {
   const toggleImageUpload = () => {
     setShowImageUpload(!showImageUpload);
   };
+
+  const handleSchedule = useCallback(() => {
+    if (!onSchedule || disabled) return;
+    onSchedule(value.trim(), images.length > 0 ? images : undefined);
+  }, [value, images, disabled, onSchedule]);
+
+  const handleBacklog = useCallback(async () => {
+    const trimmed = value.trim();
+    if (!onBacklog || !trimmed || disabled) return;
+
+    // Add to backlog and clear input
+    onBacklog(trimmed, images.length > 0 ? images : undefined);
+    setValue('');
+    setImages([]);
+    setShowImageUpload(false);
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+  }, [value, images, disabled, onBacklog]);
 
   const canSend = (value.trim() || images.length > 0) && !disabled;
 
@@ -125,6 +147,60 @@ export default function PromptInput({ onSend, disabled }: Props) {
             📎
           </button>
         </div>
+
+        {/* Backlog button */}
+        {onBacklog && (
+          <button
+            onClick={handleBacklog}
+            disabled={!value.trim() || disabled}
+            style={{
+              background: !value.trim() || disabled ? 'var(--border)' : 'var(--bg-secondary)',
+              color: !value.trim() || disabled ? 'var(--text-muted)' : 'var(--text)',
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 16,
+              flexShrink: 0,
+              border: '1px solid var(--border)',
+              cursor: !value.trim() || disabled ? 'default' : 'pointer',
+              opacity: disabled ? 0.5 : 1,
+              transition: 'all 0.2s ease',
+            }}
+            title="Add to backlog"
+          >
+            📝
+          </button>
+        )}
+
+        {/* Schedule button */}
+        {onSchedule && (
+          <button
+            onClick={handleSchedule}
+            disabled={disabled}
+            style={{
+              background: 'var(--bg-secondary)',
+              color: 'var(--text)',
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 16,
+              flexShrink: 0,
+              border: '1px solid var(--border)',
+              cursor: disabled ? 'default' : 'pointer',
+              opacity: disabled ? 0.5 : 1,
+              transition: 'all 0.2s ease',
+            }}
+            title="Schedule message"
+          >
+            ⏰
+          </button>
+        )}
 
         {/* Send button */}
         <button

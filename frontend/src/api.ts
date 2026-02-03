@@ -122,3 +122,51 @@ export async function uploadImages(chatId: string, images: File[]): Promise<Imag
 export function getImageUrl(imageId: string): string {
   return `${BASE}/images/${imageId}`;
 }
+
+// Queue API functions
+export interface QueueItem {
+  id: string;
+  chat_id: string;
+  user_message: string;
+  scheduled_time: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  created_at: string;
+  retry_count: number;
+  error_message: string | null;
+}
+
+export async function getQueueItems(status?: string, chatId?: string): Promise<QueueItem[]> {
+  const params = new URLSearchParams();
+  if (status) params.append('status', status);
+  if (chatId) params.append('chat_id', chatId);
+
+  const res = await fetch(`${BASE}/queue?${params}`);
+  return res.json();
+}
+
+export async function scheduleMessage(chatId: string, message: string, scheduledTime: string): Promise<QueueItem> {
+  const res = await fetch(`${BASE}/queue`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      user_message: message,
+      scheduled_time: scheduledTime
+    })
+  });
+  return res.json();
+}
+
+export async function cancelQueueItem(id: string): Promise<void> {
+  await fetch(`${BASE}/queue/${id}`, { method: 'DELETE' });
+}
+
+export async function executeNow(id: string): Promise<void> {
+  await fetch(`${BASE}/queue/${id}/execute-now`, { method: 'POST' });
+}
+
+export async function addToBacklog(chatId: string, message: string): Promise<QueueItem> {
+  // Schedule for immediate execution (current time)
+  const now = new Date().toISOString();
+  return scheduleMessage(chatId, message, now);
+}

@@ -11,7 +11,9 @@ import cookieParser from 'cookie-parser';
 import { chatsRouter } from './routes/chats.js';
 import { streamRouter } from './routes/stream.js';
 import { imagesRouter } from './routes/images.js';
+import { queueRouter } from './routes/queue.js';
 import { loginHandler, logoutHandler, checkAuthHandler, requireAuth } from './auth.js';
+import { queueProcessor } from './services/queue-processor.js';
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -32,6 +34,7 @@ app.use('/api/chats', chatsRouter);
 app.use('/api/chats', streamRouter);
 app.use('/api/images', imagesRouter);
 app.use('/api/chats', imagesRouter);
+app.use('/api/queue', queueRouter);
 
 // Serve frontend static files in production
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,4 +46,20 @@ app.get('*', (_req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Backend running on http://localhost:${PORT}`);
+
+  // Start the queue processor
+  queueProcessor.start();
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  queueProcessor.stop();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down gracefully');
+  queueProcessor.stop();
+  process.exit(0);
 });
