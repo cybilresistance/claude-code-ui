@@ -89,3 +89,36 @@ export async function getSessionStatus(id: string): Promise<SessionStatus> {
   const res = await fetch(`${BASE}/chats/${id}/status`, { credentials: 'include' });
   return res.json();
 }
+
+export interface StoredImage {
+  id: string;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: string;
+}
+
+export interface ImageUploadResult {
+  success: boolean;
+  images: StoredImage[];
+  errors?: string[];
+}
+
+export async function uploadImages(chatId: string, images: File[]): Promise<ImageUploadResult> {
+  const formData = new FormData();
+  images.forEach(image => {
+    formData.append('images', image);
+  });
+
+  const res = await fetch(`${BASE}/chats/${chatId}/images`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  return res.json();
+}
+
+export function getImageUrl(imageId: string): string {
+  return `${BASE}/images/${imageId}`;
+}

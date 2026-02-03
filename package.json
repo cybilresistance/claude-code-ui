@@ -15,11 +15,13 @@
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.0",
     "@openrouter/sdk": "^0.5.1",
+    "@types/multer": "^2.0.0",
     "better-sqlite3": "^11.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.21.0",
+    "multer": "^2.0.2",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-markdown": "^10.1.0",

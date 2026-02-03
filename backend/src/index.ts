@@ -10,6 +10,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { chatsRouter } from './routes/chats.js';
 import { streamRouter } from './routes/stream.js';
+import { imagesRouter } from './routes/images.js';
 import { loginHandler, logoutHandler, checkAuthHandler, requireAuth } from './auth.js';
 
 const app = express();
@@ -29,6 +30,8 @@ app.use('/api', requireAuth);
 
 app.use('/api/chats', chatsRouter);
 app.use('/api/chats', streamRouter);
+app.use('/api/images', imagesRouter);
+app.use('/api/chats', imagesRouter);
 
 // Serve frontend static files in production
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

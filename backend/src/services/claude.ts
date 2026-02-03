@@ -111,7 +111,7 @@ export function stopSession(chatId: string): boolean {
   return false;
 }
 
-export async function sendMessage(chatId: string, prompt: string): Promise<EventEmitter> {
+export async function sendMessage(chatId: string, prompt: string | any, imageData?: Buffer[]): Promise<EventEmitter> {
   const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(chatId) as any;
   if (!chat) throw new Error('Chat not found');
 
@@ -122,8 +122,47 @@ export async function sendMessage(chatId: string, prompt: string): Promise<Event
   const abortController = new AbortController();
   activeSessions.set(chatId, { abortController, emitter });
 
+  // Format the prompt/message for Claude
+  let formattedPrompt: string | AsyncIterable<any>;
+  if (imageData && imageData.length > 0) {
+    // Create content blocks with text and images
+    const contentBlocks = [
+      {
+        type: "text",
+        text: prompt
+      }
+    ];
+
+    // Add image blocks (using proper Claude SDK format)
+    for (const buffer of imageData) {
+      contentBlocks.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: "image/jpeg", // We could detect this from the buffer
+          data: buffer.toString('base64')
+        }
+      } as any);
+    }
+
+    // Create an async iterable that yields the user message with content blocks
+    formattedPrompt = (async function* () {
+      yield {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: contentBlocks
+        },
+        parent_tool_use_id: null,
+        session_id: chat.session_id || 'temp'
+      };
+    })();
+  } else {
+    formattedPrompt = prompt;
+  }
+
   const queryOpts: any = {
-    prompt,
+    prompt: formattedPrompt,
     options: {
       abortController,
       cwd: chat.folder,

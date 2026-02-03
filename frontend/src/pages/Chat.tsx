@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getChat, getMessages, getPending, respondToChat, getSessionStatus, type Chat as ChatType, type ParsedMessage, type SessionStatus } from '../api';
+import { getChat, getMessages, getPending, respondToChat, getSessionStatus, uploadImages, type Chat as ChatType, type ParsedMessage, type SessionStatus } from '../api';
 import MessageBubble from '../components/MessageBubble';
 import PromptInput from '../components/PromptInput';
 import FeedbackPanel, { type PendingAction } from '../components/FeedbackPanel';
@@ -135,8 +135,31 @@ export default function Chat() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
-  const handleSend = useCallback(async (prompt: string) => {
-    setMessages(prev => [...prev, { role: 'user', type: 'text', content: prompt }]);
+  const handleSend = useCallback(async (prompt: string, images?: File[]) => {
+    // Handle image upload first if images are provided
+    let imageIds: string[] = [];
+    if (images && images.length > 0) {
+      try {
+        const uploadResult = await uploadImages(id!, images);
+        if (uploadResult.success) {
+          imageIds = uploadResult.images.map(img => img.id);
+        } else {
+          console.error('Image upload failed:', uploadResult.errors);
+          // Continue without images
+        }
+      } catch (error) {
+        console.error('Image upload error:', error);
+        // Continue without images
+      }
+    }
+
+    // Display the user message (with image indicator if applicable)
+    let displayContent = prompt;
+    if (imageIds.length > 0) {
+      displayContent = `📷 ${imageIds.length} image${imageIds.length === 1 ? '' : 's'} attached\n\n${prompt}`;
+    }
+
+    setMessages(prev => [...prev, { role: 'user', type: 'text', content: displayContent }]);
     setNetworkError(null); // Clear any previous network errors
 
     // If there's already a streaming connection, stop it first
@@ -150,11 +173,16 @@ export default function Chat() {
     abortRef.current = controller;
 
     try {
+      const body: any = { prompt };
+      if (imageIds.length > 0) {
+        body.imageIds = imageIds;
+      }
+
       const res = await fetch(`/api/chats/${id}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
 

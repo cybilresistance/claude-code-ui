@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { sendMessage, sendSlashCommand, getActiveSession, stopSession, respondToPermission, hasPendingRequest, getPendingRequest, type StreamEvent } from '../services/claude.js';
 import { OpenRouterClient } from '../services/openrouter-client.js';
-import { statSync, existsSync, readdirSync, watchFile, unwatchFile, readFileSync } from 'fs';
+import { ImageStorageService } from '../services/image-storage.js';
+import { statSync, existsSync, readdirSync, watchFile, unwatchFile, readFileSync, openSync, readSync, closeSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import db from '../db.js';
@@ -73,14 +74,32 @@ async function generateAndSaveTitle(chatId: string, prompt: string): Promise<voi
 
 // Send a message and get SSE stream back
 streamRouter.post('/:id/message', async (req, res) => {
-  const { prompt } = req.body;
+  const { prompt, imageIds } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt is required' });
 
   try {
+    // Fetch image data if imageIds are provided
+    let imageBuffers: Buffer[] = [];
+    if (imageIds && imageIds.length > 0) {
+      for (const imageId of imageIds) {
+        try {
+          const result = ImageStorageService.getImage(imageId);
+          if (result) {
+            imageBuffers.push(result.buffer);
+          }
+        } catch (error) {
+          console.error(`Failed to load image ${imageId}:`, error);
+        }
+      }
+
+      // Store image metadata in chat metadata for this message
+      await storeMessageImages(req.params.id, imageIds);
+    }
+
     // Auto-detect slash commands and route appropriately
     const emitter = prompt.startsWith('/')
       ? await sendSlashCommand(req.params.id, prompt)
-      : await sendMessage(req.params.id, prompt);
+      : await sendMessage(req.params.id, prompt, imageBuffers.length > 0 ? imageBuffers : undefined);
 
     // Fire-and-forget: generate title from first message
     generateAndSaveTitle(req.params.id, prompt).catch(err =>
@@ -110,6 +129,37 @@ streamRouter.post('/:id/message', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+/**
+ * Store image metadata for a message in chat metadata
+ */
+async function storeMessageImages(chatId: string, imageIds: string[]): Promise<void> {
+  const chat = db.prepare('SELECT metadata FROM chats WHERE id = ?').get(chatId) as { metadata: string } | undefined;
+
+  if (!chat) {
+    console.warn(`Chat ${chatId} not found in database, skipping image metadata storage`);
+    return;
+  }
+
+  const metadata = JSON.parse(chat.metadata || '{}');
+
+  // Create a unique message ID for this set of images
+  const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+
+  if (!metadata.messageImages) {
+    metadata.messageImages = {};
+  }
+
+  metadata.messageImages[messageId] = {
+    imageIds,
+    timestamp: new Date().toISOString(),
+    messageType: 'user'
+  };
+
+  // Update the chat metadata
+  db.prepare('UPDATE chats SET metadata = ?, updated_at = ? WHERE id = ?')
+    .run(JSON.stringify(metadata), new Date().toISOString(), chatId);
+}
 
 // SSE endpoint for connecting to an active stream (web or CLI)
 streamRouter.get('/:id/stream', (req, res) => {
@@ -156,45 +206,65 @@ streamRouter.get('/:id/stream', (req, res) => {
   }
 
   // Watch CLI session file for changes
-  let lastSize = 0;
+  let lastPosition = 0;
   try {
-    lastSize = statSync(logPath).size;
+    lastPosition = statSync(logPath).size;
   } catch {}
 
   const watchHandler = () => {
     try {
       const newStats = statSync(logPath);
-      if (newStats.size > lastSize) {
-        // File grew, read new content
-        const content = readFileSync(logPath, 'utf-8');
-        const lines = content.split('\n').slice(-10); // Get last 10 lines
+      if (newStats.size > lastPosition) {
+        // Read only the new content since last position
+        const buffer = Buffer.alloc(newStats.size - lastPosition);
+        const fd = openSync(logPath, 'r');
+        readSync(fd, buffer, 0, buffer.length, lastPosition);
+        closeSync(fd);
+
+        const newContent = buffer.toString('utf-8');
+        const lines = newContent.split('\n');
 
         for (const line of lines) {
           if (!line.trim()) continue;
           try {
             const parsed = JSON.parse(line);
             if (parsed.message?.content) {
-              // Convert CLI log format to our stream format
+              // Convert CLI log format to our stream format (match web session logic)
               const blocks = Array.isArray(parsed.message.content) ? parsed.message.content : [parsed.message.content];
               for (const block of blocks) {
                 if (typeof block === 'string') {
                   res.write(`data: ${JSON.stringify({ type: 'text', content: block })}\n\n`);
                 } else if (block?.type === 'text') {
                   res.write(`data: ${JSON.stringify({ type: 'text', content: block.text })}\n\n`);
+                } else if (block?.type === 'thinking') {
+                  res.write(`data: ${JSON.stringify({ type: 'thinking', content: block.thinking })}\n\n`);
                 } else if (block?.type === 'tool_use') {
                   res.write(`data: ${JSON.stringify({
                     type: 'tool_use',
                     content: JSON.stringify(block.input),
                     toolName: block.name
                   })}\n\n`);
+                } else if (block?.type === 'tool_result') {
+                  // This is the critical missing piece - handle tool results (including command errors)
+                  const content = typeof block.content === 'string'
+                    ? block.content
+                    : Array.isArray(block.content)
+                      ? block.content.map((c: any) => typeof c === 'string' ? c : c.text || JSON.stringify(c)).join('\n')
+                      : JSON.stringify(block.content);
+                  res.write(`data: ${JSON.stringify({ type: 'tool_result', content })}\n\n`);
                 }
               }
             }
-          } catch {}
+          } catch (err) {
+            // Log parsing errors for debugging instead of silently ignoring
+            console.warn('[CLI Monitor] Failed to parse log line:', err instanceof Error ? err.message : 'Unknown error', 'Line:', line.slice(0, 100));
+          }
         }
-        lastSize = newStats.size;
+        lastPosition = newStats.size;
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[CLI Monitor] File watch error:', err instanceof Error ? err.message : 'Unknown error');
+    }
   };
 
   watchFile(logPath, { interval: 1000 }, watchHandler);
