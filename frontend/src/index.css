@@ -17,6 +17,36 @@
   --danger: #f85149;
   --radius: 12px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Built-in command colors - optimized for dark mode */
+  --builtin-user-bg: #1f2937;
+  --builtin-user-border: #60a5fa;
+  --builtin-assistant-bg: #1e293b;
+  --builtin-assistant-border: #60a5fa;
+  --builtin-text: #bfdbfe;
+}
+
+/* Light mode overrides */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #ffffff;
+    --surface: #f8fafc;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --accent: #7c6aef;
+    --accent-hover: #9484f0;
+    --user-bg: #e0e7ff;
+    --assistant-bg: #f8fafc;
+    --danger: #ef4444;
+
+    /* Built-in command colors - optimized for light mode */
+    --builtin-user-bg: #dbeafe;
+    --builtin-user-border: #3b82f6;
+    --builtin-assistant-bg: #eff6ff;
+    --builtin-assistant-border: #3b82f6;
+    --builtin-text: #1e40af;
+  }
 }
 
 html, body, #root {

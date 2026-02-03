@@ -15,6 +15,7 @@ export interface ParsedMessage {
   type: 'text' | 'thinking' | 'tool_use' | 'tool_result';
   content: string;
   toolName?: string;
+  isBuiltInCommand?: boolean;
 }
 
 export async function listChats(): Promise<Chat[]> {

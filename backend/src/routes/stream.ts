@@ -70,37 +70,6 @@ async function generateAndSaveTitle(chatId: string, prompt: string): Promise<voi
   }
 }
 
-// Send a slash command and get SSE stream back
-streamRouter.post('/:id/command', async (req, res) => {
-  const { command } = req.body;
-  if (!command) return res.status(400).json({ error: 'command is required' });
-
-  try {
-    const emitter = await sendSlashCommand(req.params.id, command);
-
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    });
-
-    const onEvent = (event: StreamEvent) => {
-      res.write(`data: ${JSON.stringify(event)}\n\n`);
-      if (event.type === 'done' || event.type === 'error') {
-        emitter.removeListener('event', onEvent);
-        res.end();
-      }
-    };
-
-    emitter.on('event', onEvent);
-
-    req.on('close', () => {
-      emitter.removeListener('event', onEvent);
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // Send a message and get SSE stream back
 streamRouter.post('/:id/message', async (req, res) => {
@@ -108,7 +77,10 @@ streamRouter.post('/:id/message', async (req, res) => {
   if (!prompt) return res.status(400).json({ error: 'prompt is required' });
 
   try {
-    const emitter = await sendMessage(req.params.id, prompt);
+    // Auto-detect slash commands and route appropriately
+    const emitter = prompt.startsWith('/')
+      ? await sendSlashCommand(req.params.id, prompt)
+      : await sendMessage(req.params.id, prompt);
 
     // Fire-and-forget: generate title from first message
     generateAndSaveTitle(req.params.id, prompt).catch(err =>

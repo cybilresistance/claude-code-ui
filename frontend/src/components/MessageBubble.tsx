@@ -186,6 +186,21 @@ export default function MessageBubble({ message }: Props) {
     );
   }
 
+  // Use different colors for built-in commands
+  const getBackgroundColor = () => {
+    if (message.isBuiltInCommand) {
+      return isUser ? 'var(--builtin-user-bg)' : 'var(--builtin-assistant-bg)';
+    }
+    return isUser ? 'var(--user-bg)' : 'var(--assistant-bg)';
+  };
+
+  const getBorderColor = () => {
+    if (message.isBuiltInCommand) {
+      return isUser ? 'var(--builtin-user-border)' : 'var(--builtin-assistant-border)';
+    }
+    return isUser ? 'transparent' : 'var(--border)';
+  };
+
   return (
     <div style={{
       display: 'flex',
@@ -196,12 +211,17 @@ export default function MessageBubble({ message }: Props) {
         maxWidth: '85%',
         padding: '10px 14px',
         borderRadius: 'var(--radius)',
-        background: isUser ? 'var(--user-bg)' : 'var(--assistant-bg)',
-        border: `1px solid ${isUser ? 'transparent' : 'var(--border)'}`,
+        background: getBackgroundColor(),
+        border: `1px solid ${getBorderColor()}`,
         fontSize: 14,
         lineHeight: 1.5,
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-word',
+        ...(message.isBuiltInCommand && {
+          fontFamily: 'monaco, "Courier New", monospace',
+          color: 'var(--builtin-text)',
+          fontWeight: 500,
+        }),
       }}>
         {message.content}
       </div>

@@ -282,7 +282,7 @@ export async function sendSlashCommand(chatId: string, command: string): Promise
   activeSessions.set(chatId, { abortController, emitter });
 
   const queryOpts: any = {
-    prompt: `Please execute this slash command: ${command}`,
+    prompt: command,
     options: {
       abortController,
       cwd: chat.folder,
@@ -293,12 +293,7 @@ export async function sendSlashCommand(chatId: string, command: string): Promise
         input: Record<string, unknown>,
         { signal, suggestions }: { signal: AbortSignal; suggestions?: unknown[] },
       ): Promise<PermissionResult> => {
-        // Auto-allow SlashCommand tool for slash command processing
-        if (toolName === 'SlashCommand') {
-          return { behavior: 'allow', updatedInput: input };
-        }
-
-        // For other tools, use the same permission logic as sendMessage
+        // Use the same permission logic as sendMessage
         const category = categorizeToolPermission(toolName);
         if (category) {
           try {
