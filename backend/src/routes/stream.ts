@@ -121,10 +121,8 @@ streamRouter.post('/:id/message', async (req, res) => {
       ? await sendSlashCommand(req.params.id, prompt)
       : await sendMessage(req.params.id, prompt, imageMetadata.length > 0 ? imageMetadata : undefined);
 
-    // Fire-and-forget: generate title from first message
-    generateAndSaveTitle(req.params.id, prompt).catch(err =>
-      console.error('[OpenRouter] Title generation failed:', err)
-    );
+    // Generate title synchronously from first message
+    await generateAndSaveTitle(req.params.id, prompt);
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
