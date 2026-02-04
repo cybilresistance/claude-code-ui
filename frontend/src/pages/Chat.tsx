@@ -419,7 +419,8 @@ export default function Chat() {
                 marginLeft: 'auto'
               }}
             >
-              🔄 Reconnect
+              <RotateCw size={12} style={{ marginRight: 4 }} />
+              Reconnect
             </button>
           </div>
         )}

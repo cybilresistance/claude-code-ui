@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { Check, RotateCw, Square } from 'lucide-react';
 import type { ParsedMessage } from '../api';
 import MarkdownRenderer from './MarkdownRenderer';
 import { formatRelativeTime } from '../utils/dateFormat';
@@ -19,10 +20,16 @@ function parseTodoItems(content: string): TodoItem[] | null {
   return null;
 }
 
-const statusIcons: Record<string, string> = {
-  completed: '✅',
-  in_progress: '🔄',
-  pending: '⬜',
+const StatusIcon = ({ status }: { status: string }) => {
+  switch (status) {
+    case 'completed':
+      return <Check size={14} style={{ color: '#10b981' }} />;
+    case 'in_progress':
+      return <RotateCw size={14} style={{ color: 'var(--accent)' }} />;
+    case 'pending':
+    default:
+      return <Square size={14} style={{ color: 'var(--text-muted)' }} />;
+  }
 };
 
 function TodoList({ items }: { items: TodoItem[] }) {
@@ -78,8 +85,8 @@ function TodoList({ items }: { items: TodoItem[] }) {
             lineHeight: 1.4,
             opacity: item.status === 'completed' ? 0.65 : 1,
           }}>
-            <span style={{ flexShrink: 0, fontSize: 14, lineHeight: '18px' }}>
-              {statusIcons[item.status] || '⬜'}
+            <span style={{ flexShrink: 0, lineHeight: '18px', display: 'flex', alignItems: 'center' }}>
+              <StatusIcon status={item.status} />
             </span>
             <span style={{
               textDecoration: item.status === 'completed' ? 'line-through' : 'none',

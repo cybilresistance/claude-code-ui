@@ -189,7 +189,7 @@ export default function PromptInput({ onSend, disabled, onSaveDraft }: Props) {
             transition: 'background 0.2s ease',
           }}
         >
-          ↑
+          <ArrowUp size={18} />
         </button>
       </div>
 
