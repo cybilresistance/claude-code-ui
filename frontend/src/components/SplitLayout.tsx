@@ -30,9 +30,9 @@ export default function SplitLayout({ onLogout }: SplitLayoutProps) {
       height: '100%',
       overflow: 'hidden'
     }}>
-      {/* Chat List Sidebar - 1/5 of width */}
+      {/* Chat List Sidebar - 1/4 of width */}
       <div className="split-sidebar" style={{
-        width: '20%',
+        width: '25%',
         minWidth: '300px',
         borderRight: '1px solid var(--border)',
         display: 'flex',
@@ -42,9 +42,9 @@ export default function SplitLayout({ onLogout }: SplitLayoutProps) {
         <ChatList onLogout={onLogout} />
       </div>
 
-      {/* Active Chat Area - 4/5 of width */}
+      {/* Active Chat Area - 3/4 of width */}
       <div className="split-main" style={{
-        width: '80%',
+        width: '75%',
         display: 'flex',
         flexDirection: 'column',
         background: 'var(--bg)',
