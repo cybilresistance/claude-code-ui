@@ -87,18 +87,14 @@ chatsRouter.get('/', (req, res) => {
   // Get all DB chats for augmentation lookup
   const dbChats = db.prepare('SELECT * FROM chats ORDER BY updated_at DESC').all() as any[];
 
-  // Create lookup maps for DB data
+  // Create lookup map for DB data by session ID only
   const dbChatsBySessionId = new Map<string, any>();
-  const dbChatsByFolder = new Map<string, any>();
 
   for (const chat of dbChats) {
     // Index by session_id
     if (chat.session_id) {
       dbChatsBySessionId.set(chat.session_id, chat);
     }
-
-    // Index by folder path
-    dbChatsByFolder.set(chat.folder, chat);
 
     // Also index by session_ids in metadata
     try {
@@ -114,13 +110,8 @@ chatsRouter.get('/', (req, res) => {
   // Discover all sessions from filesystem and augment with DB data
   const allSessions = discoverAllSessions();
   const chatsFromLogs = allSessions.map(s => {
-    // First try to find by session ID
-    let dbChat = dbChatsBySessionId.get(s.sessionId);
-
-    // If not found by session ID, try to find by folder path
-    if (!dbChat) {
-      dbChat = dbChatsByFolder.get(s.folder);
-    }
+    // Try to find by session ID
+    const dbChat = dbChatsBySessionId.get(s.sessionId);
 
     if (dbChat) {
       // Augment with DB data while keeping filesystem as source of truth for timestamps
