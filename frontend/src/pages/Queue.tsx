@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ChevronLeft, RotateCw, Clock } from 'lucide-react';
 import { getQueueItems, cancelQueueItem, executeNow, scheduleMessage, type QueueItem } from '../api';
 
 export default function Queue() {
@@ -109,9 +110,9 @@ export default function Queue() {
       }}>
         <button
           onClick={() => navigate('/')}
-          style={{ background: 'none', fontSize: 18, padding: '4px 8px' }}
+          style={{ background: 'none', padding: '4px 8px', display: 'flex', alignItems: 'center', color: 'var(--text)' }}
         >
-          ←
+          <ChevronLeft size={20} />
         </button>
         <div style={{ fontSize: 18, fontWeight: 600 }}>Drafts</div>
         <button
@@ -125,7 +126,8 @@ export default function Queue() {
             fontSize: 13,
           }}
         >
-          🔄 Refresh
+          <RotateCw size={14} style={{ marginRight: 6 }} />
+          Refresh
         </button>
       </header>
 
@@ -274,7 +276,8 @@ export default function Queue() {
                             cursor: 'pointer',
                           }}
                         >
-                          ⏰ Schedule
+                          <Clock size={14} style={{ marginRight: 6 }} />
+                          Schedule
                         </button>
                         <button
                           onClick={() => handleCancel(item.id)}

@@ -1,3 +1,4 @@
+import { Globe, Monitor, X } from 'lucide-react';
 import type { Chat, SessionStatus } from '../api';
 
 interface Props {
@@ -47,7 +48,7 @@ export default function ChatListItem({ chat, onClick, onDelete, sessionStatus }:
               color: '#fff',
               fontWeight: 500,
             }}>
-              {sessionStatus.type === 'web' ? '🌐' : '💻'}
+              {sessionStatus.type === 'web' ? <Globe size={10} /> : <Monitor size={10} />}
             </div>
           )}
         </div>
@@ -66,7 +67,7 @@ export default function ChatListItem({ chat, onClick, onDelete, sessionStatus }:
           marginLeft: 8,
         }}
       >
-        ×
+        <X size={16} />
       </button>
     </div>
   );

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ClipboardList, X } from 'lucide-react';
 import { listChats, createChat, deleteChat, getSessionStatus, type Chat, type SessionStatus, type DefaultPermissions, type ChatListResponse } from '../api';
 import ChatListItem from '../components/ChatListItem';
 import PermissionSettings from '../components/PermissionSettings';
@@ -132,7 +133,8 @@ export default function ChatList({ onLogout }: { onLogout: () => void }) {
               border: '1px solid var(--border)',
             }}
           >
-            📋 Drafts
+            <ClipboardList size={14} style={{ marginRight: 6 }} />
+            Drafts
           </button>
           <button
             onClick={() => setShowNew(!showNew)}
@@ -220,7 +222,7 @@ export default function ChatList({ onLogout }: { onLogout: () => void }) {
                     }}
                     title={`Remove ${dir} from recent directories`}
                   >
-                    ✕
+                    <X size={14} />
                   </button>
                 </div>
               ))}
