@@ -117,9 +117,18 @@ streamRouter.post('/:id/message', async (req, res) => {
     }
 
     // Auto-detect slash commands and route appropriately
-    const emitter = prompt.startsWith('/')
-      ? await sendSlashCommand(req.params.id, prompt)
-      : await sendMessage(req.params.id, prompt, imageMetadata.length > 0 ? imageMetadata : undefined);
+    let emitter;
+    if (prompt.startsWith('/')) {
+      // Handle /help specifically by converting to a regular message that Claude can respond to
+      if (prompt.trim().toLowerCase() === '/help') {
+        const helpPrompt = "Please provide help information about available slash commands in Claude Code. List the available commands and explain how they work.";
+        emitter = await sendMessage(req.params.id, helpPrompt, imageMetadata.length > 0 ? imageMetadata : undefined);
+      } else {
+        emitter = await sendSlashCommand(req.params.id, prompt);
+      }
+    } else {
+      emitter = await sendMessage(req.params.id, prompt, imageMetadata.length > 0 ? imageMetadata : undefined);
+    }
 
     // Generate title synchronously from first message
     await generateAndSaveTitle(req.params.id, prompt);
