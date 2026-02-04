@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, X } from 'lucide-react';
+import { ClipboardList, X, Plus, LogOut } from 'lucide-react';
 import { listChats, createChat, deleteChat, getSessionStatus, type Chat, type SessionStatus, type DefaultPermissions, type ChatListResponse } from '../api';
 import ChatListItem from '../components/ChatListItem';
 import PermissionSettings from '../components/PermissionSettings';
@@ -127,40 +127,47 @@ export default function ChatList({ onLogout }: { onLogout: () => void }) {
             style={{
               background: 'var(--bg-secondary)',
               color: 'var(--text)',
-              padding: '8px 16px',
+              padding: '10px',
               borderRadius: 8,
-              fontSize: 14,
               border: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
+            title="Drafts"
           >
-            <ClipboardList size={14} style={{ marginRight: 6 }} />
-            Drafts
+            <ClipboardList size={18} />
           </button>
           <button
             onClick={() => setShowNew(!showNew)}
             style={{
               background: 'var(--accent)',
               color: '#fff',
-              padding: '8px 16px',
+              padding: '10px',
               borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
+            title="New Chat"
           >
-            New Chat
+            <Plus size={18} />
           </button>
           <button
             onClick={onLogout}
             style={{
               background: 'transparent',
-              color: 'var(--fg)',
-              padding: '8px 12px',
+              color: 'var(--text)',
+              padding: '10px',
               borderRadius: 8,
-              fontSize: 14,
               border: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
+            title="Logout"
           >
-            Logout
+            <LogOut size={18} />
           </button>
         </div>
       </header>
