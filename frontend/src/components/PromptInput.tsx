@@ -139,7 +139,7 @@ export default function PromptInput({ onSend, disabled, onSaveDraft }: Props) {
             }}
             title={showImageUpload ? 'Hide image upload' : 'Upload images'}
           >
-            📎
+            <Paperclip size={14} />
           </button>
         </div>
 
@@ -166,7 +166,7 @@ export default function PromptInput({ onSend, disabled, onSaveDraft }: Props) {
             }}
             title="Save as draft"
           >
-            📝
+            <Edit size={16} />
           </button>
         )}
 

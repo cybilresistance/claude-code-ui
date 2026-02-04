@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { Paperclip, X } from 'lucide-react';
 
 interface StoredImage {
   id: string;
@@ -170,7 +171,7 @@ export default function ImageUpload({ images, onImagesChange, disabled = false }
                 }}
                 title="Remove image"
               >
-                ×
+                <X size={14} />
               </button>
               <div
                 style={{
@@ -219,7 +220,10 @@ export default function ImageUpload({ images, onImagesChange, disabled = false }
           <div>Drop images here</div>
         ) : (
           <div>
-            📎 Click to upload or drag images here
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <Paperclip size={16} />
+              Click to upload or drag images here
+            </div>
             <br />
             <span style={{ fontSize: 11, opacity: 0.7 }}>
               PNG, JPEG, GIF, WEBP up to 10MB each
