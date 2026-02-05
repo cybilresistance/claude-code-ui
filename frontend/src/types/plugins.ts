@@ -1,19 +1,12 @@
-export interface PluginSkill {
-  name: string;
-  description?: string;
-}
-
-export interface PluginAgent {
+export interface PluginCommand {
   name: string;
   description?: string;
 }
 
 export interface PluginManifest {
   name: string;
-  version: string;
   description: string;
-  skills?: PluginSkill[];
-  agents?: PluginAgent[];
+  source: string;
   [key: string]: any;
 }
 
@@ -21,6 +14,5 @@ export interface Plugin {
   id: string;
   path: string;
   manifest: PluginManifest;
-  skills: PluginSkill[];
-  agents: PluginAgent[];
+  commands: PluginCommand[];
 }

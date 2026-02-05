@@ -1,22 +1,15 @@
-import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
+import { readFileSync, existsSync, readdirSync } from 'fs';
+import { join, dirname, resolve } from 'path';
 
-export interface PluginSkill {
-  name: string;
-  description?: string;
-}
-
-export interface PluginAgent {
+export interface PluginCommand {
   name: string;
   description?: string;
 }
 
 export interface PluginManifest {
   name: string;
-  version: string;
   description: string;
-  skills?: PluginSkill[];
-  agents?: PluginAgent[];
+  source: string;
   [key: string]: any;
 }
 
@@ -24,8 +17,49 @@ export interface Plugin {
   id: string;
   path: string;
   manifest: PluginManifest;
-  skills: PluginSkill[];
-  agents: PluginAgent[];
+  commands: PluginCommand[];
+}
+
+/**
+ * Scan a plugin source directory for commands in the commands/ folder
+ */
+function discoverPluginCommands(pluginSourcePath: string, marketplaceDir: string): PluginCommand[] {
+  try {
+    const absoluteSourcePath = resolve(marketplaceDir, pluginSourcePath);
+    const commandsPath = join(absoluteSourcePath, 'commands');
+
+    if (!existsSync(commandsPath)) {
+      return [];
+    }
+
+    const commandFiles = readdirSync(commandsPath).filter(file => file.endsWith('.md'));
+
+    return commandFiles.map(file => {
+      const commandName = file.replace(/\.md$/, '');
+
+      // Try to extract description from the first line of the .md file
+      let description = '';
+      try {
+        const commandFilePath = join(commandsPath, file);
+        const content = readFileSync(commandFilePath, 'utf-8');
+        const firstLine = content.split('\n')[0];
+        // Extract title from markdown header (# Title) or use file name
+        description = firstLine.startsWith('#')
+          ? firstLine.replace(/^#+\s*/, '').trim()
+          : `${commandName} command`;
+      } catch {
+        description = `${commandName} command`;
+      }
+
+      return {
+        name: commandName,
+        description
+      };
+    });
+  } catch (error) {
+    console.warn(`Failed to discover commands for plugin source ${pluginSourcePath}:`, error);
+    return [];
+  }
 }
 
 /**
@@ -46,15 +80,20 @@ export function discoverPlugins(directory: string): Plugin[] {
       return [];
     }
 
+    const pluginBaseDir = dirname(dirname(marketplacePath)); // Parent of .claude-plugin folder
+
     return marketplace.plugins
-      .filter((p: any) => p.name && p.version && p.description)
-      .map((p: any) => ({
-        id: p.name,
-        path: marketplacePath,
-        manifest: p,
-        skills: p.skills || [],
-        agents: p.agents || []
-      }));
+      .filter((p: any) => p.name && p.source && p.description)
+      .map((p: any) => {
+        const commands = discoverPluginCommands(p.source, pluginBaseDir);
+
+        return {
+          id: p.name,
+          path: marketplacePath,
+          manifest: p,
+          commands
+        };
+      });
   } catch (error) {
     console.warn(`Failed to parse marketplace.json at ${marketplacePath}:`, error);
     return [];
@@ -69,20 +108,8 @@ export function getPluginsForDirectory(directory: string): Plugin[] {
 }
 
 /**
- * Convert plugin skills and agents to slash command format
+ * Convert plugin commands to slash command format
  */
 export function pluginToSlashCommands(plugin: Plugin): string[] {
-  const commands: string[] = [];
-
-  // Add skills with plugin namespace
-  for (const skill of plugin.skills) {
-    commands.push(`${plugin.manifest.name}:${skill.name}`);
-  }
-
-  // Add agents with plugin namespace
-  for (const agent of plugin.agents) {
-    commands.push(`${plugin.manifest.name}:${agent.name}`);
-  }
-
-  return commands;
+  return plugin.commands.map(command => `${plugin.manifest.name}:${command.name}`);
 }

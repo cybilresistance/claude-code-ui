@@ -269,7 +269,7 @@ export default function SlashCommandsModal({ isOpen, onClose, slashCommands, plu
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {plugins.map((plugin) => {
                   const isActive = activePluginIds.has(plugin.id);
-                  const pluginCommands = [...plugin.skills, ...plugin.agents];
+                  const pluginCommands = plugin.commands;
 
                   return (
                     <div
@@ -304,15 +304,6 @@ export default function SlashCommandsModal({ isOpen, onClose, slashCommands, plu
                             }}>
                               {plugin.manifest.name}
                             </code>
-                            <span style={{
-                              fontSize: '12px',
-                              color: 'var(--text-muted)',
-                              background: 'var(--bg-secondary)',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                            }}>
-                              v{plugin.manifest.version}
-                            </span>
                           </div>
                           <p style={{
                             margin: 0,
