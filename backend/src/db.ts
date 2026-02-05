@@ -12,32 +12,8 @@ const db: InstanceType<typeof Database> = new Database(join(dbDir, 'claude-code-
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS chats (
-    id TEXT PRIMARY KEY,
-    folder TEXT NOT NULL,
-    session_id TEXT,
-    session_log_path TEXT,
-    metadata TEXT DEFAULT '{}',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  )
-`);
-
+// Chats table removed - now stored in /data/chats/ as JSON files
 // Sessions table removed - now stored in /data/sessions.json
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS message_queue (
-    id TEXT PRIMARY KEY,
-    chat_id TEXT NOT NULL,
-    user_message TEXT NOT NULL,
-    scheduled_time TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',
-    created_at TEXT NOT NULL,
-    retry_count INTEGER DEFAULT 0,
-    error_message TEXT DEFAULT NULL,
-    FOREIGN KEY (chat_id) REFERENCES chats (id) ON DELETE CASCADE
-  )
-`);
+// Message queue table removed - now stored in /data/queue/ as JSON files
 
 export default db;
