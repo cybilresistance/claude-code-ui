@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { RotateCw, CheckSquare, Square, Slash, ArrowLeft, ChevronDown } from 'lucide-react';
+import { RotateCw, CheckSquare, Square, Slash, ArrowLeft, ChevronDown, ArrowDown } from 'lucide-react';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { getChat, getMessages, getPending, respondToChat, getSessionStatus, uploadImages, getSlashCommands, type Chat as ChatType, type ParsedMessage, type SessionStatus } from '../api';
 import MessageBubble from '../components/MessageBubble';
@@ -30,7 +30,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
   const [slashCommands, setSlashCommands] = useState<string[]>([]);
   const [showSlashCommandsModal, setShowSlashCommandsModal] = useState(false);
   const [promptInputSetValue, setPromptInputSetValue] = useState<((value: string) => void) | null>(null);
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [autoScroll, setAutoScroll] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -198,48 +198,23 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
     checkSessionStatus();
   }, [id, checkSessionStatus, loadSlashCommands]);
 
-  // Handle scroll detection for scroll-to-bottom button
-  const handleScroll = useCallback(() => {
-    if (!chatContainerRef.current) return;
-
-    const container = chatContainerRef.current;
-    const scrollTop = container.scrollTop;
-    const scrollHeight = container.scrollHeight;
-    const clientHeight = container.clientHeight;
-
-    // Show scroll-to-bottom button if not at bottom (with small tolerance)
-    const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50;
-    setShowScrollToBottom(!isAtBottom);
-  }, []);
 
   useEffect(() => {
-    const container = chatContainerRef.current;
-    if (!container) return;
+    // Only auto-scroll if auto-scroll is enabled
+    if (!autoScroll) return;
 
-    container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, [handleScroll]);
-
-  useEffect(() => {
-    // Only auto-scroll if user is already at or near the bottom
-    if (!chatContainerRef.current) return;
-
-    const container = chatContainerRef.current;
-    const scrollTop = container.scrollTop;
-    const scrollHeight = container.scrollHeight;
-    const clientHeight = container.clientHeight;
-
-    // Check if user is at bottom (with tolerance for rounding errors)
-    const isAtBottom = scrollTop + clientHeight >= scrollHeight - 100;
-
-    if (isAtBottom) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages.length, inFlightMessage]);
-
-  const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    setShowScrollToBottom(false);
+  }, [messages.length, inFlightMessage, autoScroll]);
+
+  const toggleAutoScroll = useCallback(() => {
+    setAutoScroll(prev => {
+      const newAutoScroll = !prev;
+      // If turning auto-scroll on, immediately scroll to bottom
+      if (newAutoScroll) {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+      return newAutoScroll;
+    });
   }, []);
 
   const handleSend = useCallback(async (prompt: string, images?: File[]) => {
@@ -695,39 +670,37 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
         <div ref={bottomRef} />
         </div>
 
-        {/* Scroll to bottom button */}
-        {showScrollToBottom && (
-          <button
-            onClick={scrollToBottom}
-            style={{
-              position: 'absolute',
-              bottom: '20px',
-              right: '20px',
-              background: 'var(--accent)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '50%',
-              width: '40px',
-              height: '40px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-              zIndex: 10,
-              transition: 'all 0.2s ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'scale(1.1)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-            title="Scroll to bottom"
-          >
-            <ChevronDown size={20} />
-          </button>
-        )}
+        {/* Auto-scroll toggle button */}
+        <button
+          onClick={toggleAutoScroll}
+          style={{
+            position: 'absolute',
+            bottom: '20px',
+            right: '20px',
+            background: autoScroll ? 'var(--accent)' : 'var(--bg-secondary)',
+            color: autoScroll ? '#fff' : 'var(--text)',
+            border: autoScroll ? 'none' : '1px solid var(--border)',
+            borderRadius: '50%',
+            width: '40px',
+            height: '40px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            zIndex: 10,
+            transition: 'all 0.2s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'scale(1.1)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          title={autoScroll ? 'Auto-scroll is ON - Click to disable' : 'Auto-scroll is OFF - Click to enable'}
+        >
+          <ArrowDown size={20} />
+        </button>
       </div>
 
       {pendingAction ? (
