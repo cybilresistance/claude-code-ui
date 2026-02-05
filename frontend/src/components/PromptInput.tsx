@@ -20,7 +20,9 @@ export default function PromptInput({ onSend, disabled, onSaveDraft, slashComman
 
   useEffect(() => {
     if (onSetValue) {
-      onSetValue(setValue);
+      // Wrap in arrow function because setState interprets functions as updaters
+      // When passing a function to setState, React calls it - so we return the function we want to store
+      onSetValue(() => setValue);
     }
   }, [onSetValue]);
 
