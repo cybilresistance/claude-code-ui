@@ -92,32 +92,28 @@ function discoverSessionsPaginated(limit: number, offset: number): {
   if (!existsSync(CLAUDE_PROJECTS_DIR)) return { sessions: [], total: 0 };
 
   try {
-    // Use cross-platform find command to get all .jsonl files
-    // Try different approaches for different systems
-    let findCommand: string;
-    let output: string;
-
-    // First try with GNU stat format (Linux)
-    try {
-      findCommand = `find "${CLAUDE_PROJECTS_DIR}" -name "*.jsonl" -type f -exec stat -c "%Y %n" {} + 2>/dev/null | sort -rn`;
-      output = execSync(findCommand, { encoding: 'utf8' }).trim();
-    } catch {
-      // Fallback to BSD stat format (macOS)
-      try {
-        findCommand = `find "${CLAUDE_PROJECTS_DIR}" -name "*.jsonl" -type f -exec stat -f "%m %N" {} + 2>/dev/null | sort -rn`;
-        output = execSync(findCommand, { encoding: 'utf8' }).trim();
-      } catch {
-        // If both fail, throw to trigger Node.js fallback
-        throw new Error('Cross-platform find commands failed');
-      }
-    }
+    // Use cross-platform shell command to get file paths with modification timestamps
+    // This approach works on both GNU (Linux) and BSD (macOS) systems using standard UNIX commands
+    const findCommand = `find "${CLAUDE_PROJECTS_DIR}" -name "*.jsonl" -type f -exec sh -c 'echo "$(date -r "$1" +%s) $1"' _ {} \\; 2>/dev/null | sort -rn`;
+    const output = execSync(findCommand, { encoding: 'utf8' }).trim();
 
     if (!output) return { sessions: [], total: 0 };
 
-    const allFiles = output.split('\n').map(line => {
-      const [timestamp, filePath] = line.split(' ', 2);
-      return { timestamp: parseFloat(timestamp), filePath };
-    });
+    // Parse the output format: "timestamp filepath"
+    const allFiles = output.split('\n')
+      .filter(line => line.trim())
+      .map(line => {
+        const spaceIndex = line.indexOf(' ');
+        if (spaceIndex === -1) return null;
+
+        const timestamp = parseInt(line.substring(0, spaceIndex), 10);
+        const filePath = line.substring(spaceIndex + 1).trim();
+
+        if (isNaN(timestamp) || !filePath) return null;
+
+        return { timestamp, filePath };
+      })
+      .filter((item): item is { timestamp: number; filePath: string } => item !== null);
 
     const total = allFiles.length;
 
@@ -125,7 +121,7 @@ function discoverSessionsPaginated(limit: number, offset: number): {
     const pageFiles = allFiles.slice(offset, offset + limit);
     const results: { sessionId: string; folder: string; filePath: string; createdAt: Date; updatedAt: Date }[] = [];
 
-    for (const { filePath } of pageFiles) {
+    for (const { timestamp, filePath } of pageFiles) {
       try {
         const sessionId = filePath.split('/').pop()?.replace('.jsonl', '');
         if (!sessionId) continue;
@@ -135,14 +131,14 @@ function discoverSessionsPaginated(limit: number, offset: number): {
 
         const folder = projectDirToFolder(projectDir);
 
-        // Get file stats only for files we're actually processing
-        const st = statSync(filePath);
+        // Use timestamp from shell command instead of additional statSync call
+        const mtime = new Date(timestamp * 1000); // Convert Unix timestamp to Date
         results.push({
           sessionId,
           folder,
           filePath,
-          createdAt: st.birthtime,
-          updatedAt: st.mtime
+          createdAt: mtime, // Use mtime as approximation for createdAt
+          updatedAt: mtime
         });
       } catch {
         continue;
