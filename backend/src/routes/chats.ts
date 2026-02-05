@@ -5,6 +5,7 @@ import { homedir } from 'os';
 import { join } from 'path';
 import db from '../db.js';
 import { getSlashCommandsForDirectory } from '../services/slashCommands.js';
+import { getGitInfo } from '../utils/git.js';
 
 export const chatsRouter = Router();
 
@@ -114,6 +115,9 @@ chatsRouter.get('/', (req, res) => {
     // Try to find by session ID
     const dbChat = dbChatsBySessionId.get(s.sessionId);
 
+    // Get git info for the folder
+    const gitInfo = getGitInfo(s.folder);
+
     if (dbChat) {
       // Augment with DB data while keeping filesystem as source of truth for timestamps
       return {
@@ -124,6 +128,9 @@ chatsRouter.get('/', (req, res) => {
         // Ensure session info from filesystem
         session_id: s.sessionId,
         session_log_path: s.filePath,
+        // Add git information
+        is_git_repo: gitInfo.isGitRepo,
+        git_branch: gitInfo.branch,
         // Merge session_ids in metadata
         metadata: (() => {
           try {
@@ -149,6 +156,9 @@ chatsRouter.get('/', (req, res) => {
         metadata: JSON.stringify({ session_ids: [s.sessionId] }),
         created_at: s.createdAt.toISOString(),
         updated_at: s.updatedAt.toISOString(),
+        // Add git information
+        is_git_repo: gitInfo.isGitRepo,
+        git_branch: gitInfo.branch,
         _from_filesystem: true,
       };
     }
@@ -202,8 +212,16 @@ chatsRouter.delete('/:id', (req, res) => {
  * Look up a chat by ID, checking the DB first then falling back to filesystem.
  */
 function findChat(id: string): any | null {
-  const dbChat = db.prepare('SELECT * FROM chats WHERE id = ?').get(id);
-  if (dbChat) return dbChat;
+  const dbChat = db.prepare('SELECT * FROM chats WHERE id = ?').get(id) as any;
+  if (dbChat) {
+    // Add git information to DB chats
+    const gitInfo = getGitInfo(dbChat.folder);
+    return {
+      ...dbChat,
+      is_git_repo: gitInfo.isGitRepo,
+      git_branch: gitInfo.branch,
+    };
+  }
 
   // Try filesystem: id might be a session ID
   const logPath = findSessionLogPath(id);
@@ -212,14 +230,19 @@ function findChat(id: string): any | null {
   const projectDir = join(logPath, '..');
   const dirName = projectDir.split('/').pop()!;
   const st = statSync(logPath);
+  const folder = projectDirToFolder(dirName);
+  const gitInfo = getGitInfo(folder);
+
   return {
     id,
-    folder: projectDirToFolder(dirName),
+    folder,
     session_id: id,
     session_log_path: logPath,
     metadata: JSON.stringify({ session_ids: [id] }),
     created_at: st.birthtime.toISOString(),
     updated_at: st.mtime.toISOString(),
+    is_git_repo: gitInfo.isGitRepo,
+    git_branch: gitInfo.branch,
     _from_filesystem: true,
   };
 }
