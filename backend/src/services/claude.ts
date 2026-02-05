@@ -24,12 +24,14 @@ function logDebug(message: string, data?: any) {
 
 export interface StreamEvent {
   type: 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'done' | 'error'
-    | 'permission_request' | 'user_question' | 'plan_review';
+    | 'permission_request' | 'user_question' | 'plan_review' | 'chat_created';
   content: string;
   toolName?: string;
   input?: Record<string, unknown>;
   questions?: unknown[];
   suggestions?: unknown[];
+  chatId?: string;
+  chat?: any;
 }
 
 interface PendingRequest {
@@ -368,6 +370,221 @@ export async function sendMessage(chatId: string, prompt: string | any, imageMet
     } finally {
       activeSessions.delete(chatId);
       pendingRequests.delete(chatId);
+    }
+  })();
+
+  return emitter;
+}
+
+/**
+ * Send the first message to create a new chat session.
+ * This is used when no chat exists yet - it creates the chat when session_id is received from SDK.
+ */
+export async function sendNewMessage(
+  folder: string,
+  prompt: string,
+  defaultPermissions?: DefaultPermissions,
+  imageMetadata?: { buffer: Buffer; mimeType: string }[]
+): Promise<EventEmitter> {
+  const emitter = new EventEmitter();
+  const abortController = new AbortController();
+
+  // Use a temporary ID for tracking the session until we get the real session_id
+  const tempId = `new-${Date.now()}`;
+  activeSessions.set(tempId, { abortController, emitter });
+
+  // Build prompt
+  let formattedPrompt: string | AsyncIterable<any>;
+
+  if (imageMetadata && imageMetadata.length > 0) {
+    const content: any[] = [];
+    if (prompt && prompt.trim()) {
+      content.push({ type: 'text', text: prompt.trim() });
+    }
+    for (const { buffer, mimeType } of imageMetadata) {
+      const base64 = buffer.toString('base64');
+      content.push({
+        type: 'image',
+        source: { type: 'base64', media_type: mimeType, data: base64 }
+      });
+    }
+    const sdkMessage = {
+      type: 'user' as const,
+      message: { role: 'user' as const, content },
+      parent_tool_use_id: null
+    };
+    formattedPrompt = (async function* () { yield sdkMessage; })();
+  } else {
+    formattedPrompt = prompt;
+  }
+
+  const metadata = {
+    ...(defaultPermissions && { defaultPermissions })
+  };
+
+  const queryOpts: any = {
+    prompt: formattedPrompt,
+    options: {
+      abortController,
+      cwd: folder,
+      maxTurns: 50,
+      env: {
+        ...process.env,
+        PATH: process.env.PATH,
+        NODE_PATH: process.env.NODE_PATH
+      },
+      canUseTool: async (
+        toolName: string,
+        input: Record<string, unknown>,
+        { signal, suggestions }: { signal: AbortSignal; suggestions?: unknown[] },
+      ): Promise<PermissionResult> => {
+        const category = categorizeToolPermission(toolName);
+        if (category && defaultPermissions && defaultPermissions[category]) {
+          const permission = defaultPermissions[category];
+          if (permission === 'allow') {
+            return { behavior: 'allow', updatedInput: input };
+          } else if (permission === 'deny') {
+            return { behavior: 'deny', message: `Auto-denied by default ${category} policy`, interrupt: true };
+          }
+        }
+
+        return new Promise<PermissionResult>((resolve) => {
+          if (toolName === 'AskUserQuestion') {
+            emitter.emit('event', {
+              type: 'user_question',
+              content: '',
+              questions: input.questions as unknown[],
+            } as StreamEvent);
+          } else if (toolName === 'ExitPlanMode') {
+            emitter.emit('event', {
+              type: 'plan_review',
+              content: JSON.stringify(input),
+            } as StreamEvent);
+          } else {
+            emitter.emit('event', {
+              type: 'permission_request',
+              content: '',
+              toolName,
+              input,
+              suggestions,
+            } as StreamEvent);
+          }
+
+          let eventType: PendingRequest['eventType'];
+          let eventData: Record<string, unknown>;
+          if (toolName === 'AskUserQuestion') {
+            eventType = 'user_question';
+            eventData = { questions: input.questions };
+          } else if (toolName === 'ExitPlanMode') {
+            eventType = 'plan_review';
+            eventData = { content: JSON.stringify(input) };
+          } else {
+            eventType = 'permission_request';
+            eventData = { toolName, input, suggestions };
+          }
+
+          pendingRequests.set(tempId, { toolName, input, suggestions, eventType, eventData, resolve });
+
+          signal.addEventListener('abort', () => {
+            pendingRequests.delete(tempId);
+            resolve({ behavior: 'deny', message: 'Aborted' });
+          });
+        });
+      },
+    },
+  };
+
+  (async () => {
+    try {
+      let sessionId: string | null = null;
+      let chatId: string | null = null;
+
+      logDebug('Starting new chat session (new chat flow)', { folder });
+
+      const conversation = query(queryOpts);
+
+      for await (const message of conversation) {
+        if (abortController.signal.aborted) break;
+
+        // Capture slash commands from system initialization message
+        if ('slash_commands' in message && message.slash_commands) {
+          const slashCommands = message.slash_commands as string[];
+          setSlashCommandsForDirectory(folder, slashCommands);
+        }
+
+        // Create the chat when we receive session_id
+        if ('session_id' in message && message.session_id && !sessionId) {
+          sessionId = message.session_id as string;
+          chatId = sessionId; // Use session_id as the chat ID
+
+          const meta = { ...metadata, session_ids: [sessionId] };
+          const chat = chatFileService.upsertChat(sessionId, folder, sessionId, {
+            metadata: JSON.stringify(meta)
+          });
+
+          // Move the session tracking from tempId to the real chatId
+          activeSessions.delete(tempId);
+          activeSessions.set(chatId, { abortController, emitter });
+
+          // Move pending requests too
+          const pending = pendingRequests.get(tempId);
+          if (pending) {
+            pendingRequests.delete(tempId);
+            pendingRequests.set(chatId, pending);
+          }
+
+          // Emit chat_created event so frontend can navigate
+          emitter.emit('event', {
+            type: 'chat_created',
+            content: '',
+            chatId: sessionId,
+            chat: {
+              ...chat,
+              session_id: sessionId,
+            }
+          } as StreamEvent);
+        }
+
+        const blocks = (message as any).message?.content || [];
+        for (const block of blocks) {
+          switch (block.type) {
+            case 'text':
+              emitter.emit('event', { type: 'text', content: block.text } as StreamEvent);
+              break;
+            case 'thinking':
+              emitter.emit('event', { type: 'thinking', content: block.thinking } as StreamEvent);
+              break;
+            case 'tool_use':
+              emitter.emit('event', {
+                type: 'tool_use',
+                content: JSON.stringify(block.input),
+                toolName: block.name,
+              } as StreamEvent);
+              break;
+            case 'tool_result': {
+              const content = typeof block.content === 'string'
+                ? block.content
+                : Array.isArray(block.content)
+                  ? block.content.map((c: any) => typeof c === 'string' ? c : c.text || JSON.stringify(c)).join('\n')
+                  : JSON.stringify(block.content);
+              emitter.emit('event', { type: 'tool_result', content } as StreamEvent);
+              break;
+            }
+          }
+        }
+      }
+
+      if (chatId) {
+        chatFileService.updateChat(chatId, {});
+      }
+      emitter.emit('event', { type: 'done', content: '' } as StreamEvent);
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        emitter.emit('event', { type: 'error', content: err.message } as StreamEvent);
+      }
+    } finally {
+      activeSessions.delete(tempId);
+      pendingRequests.delete(tempId);
     }
   })();
 

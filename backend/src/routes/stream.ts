@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { sendMessage, sendSlashCommand, getActiveSession, stopSession, respondToPermission, hasPendingRequest, getPendingRequest, type StreamEvent } from '../services/claude.js';
+import { sendMessage, sendNewMessage, sendSlashCommand, getActiveSession, stopSession, respondToPermission, hasPendingRequest, getPendingRequest, type StreamEvent } from '../services/claude.js';
 import { OpenRouterClient } from '../services/openrouter-client.js';
 import { ImageStorageService } from '../services/image-storage.js';
 import { statSync, existsSync, readdirSync, watchFile, unwatchFile, readFileSync, openSync, readSync, closeSync } from 'fs';
@@ -76,6 +76,87 @@ async function generateAndSaveTitle(chatId: string, prompt: string): Promise<voi
   }
 }
 
+
+// Send first message to create a new chat (no existing chat ID required)
+streamRouter.post('/new/message', async (req, res) => {
+  const { folder, prompt, defaultPermissions, imageIds } = req.body;
+  if (!folder) return res.status(400).json({ error: 'folder is required' });
+  if (!prompt) return res.status(400).json({ error: 'prompt is required' });
+
+  // Check if folder exists
+  if (!existsSync(folder)) {
+    return res.status(400).json({ error: 'folder does not exist' });
+  }
+
+  try {
+    // Fetch image data if imageIds are provided
+    let imageMetadata: { buffer: Buffer; mimeType: string }[] = [];
+    if (imageIds && imageIds.length > 0) {
+      for (const imageId of imageIds) {
+        try {
+          const result = ImageStorageService.getImage(imageId);
+          if (result) {
+            imageMetadata.push({
+              buffer: result.buffer,
+              mimeType: result.image.mimeType
+            });
+          }
+        } catch (error) {
+          console.error(`Failed to load image ${imageId}:`, error);
+        }
+      }
+    }
+
+    // Start a new chat session
+    const emitter = prompt.startsWith('/')
+      ? await sendNewMessage(folder, prompt, defaultPermissions, imageMetadata.length > 0 ? imageMetadata : undefined)
+      : await sendNewMessage(folder, prompt, defaultPermissions, imageMetadata.length > 0 ? imageMetadata : undefined);
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+
+    let chatId: string | null = null;
+
+    const onEvent = (event: StreamEvent) => {
+      // Handle chat_created event - capture chatId and forward to client
+      if (event.type === 'chat_created') {
+        chatId = event.chatId || null;
+        res.write(`data: ${JSON.stringify({ type: 'chat_created', chatId: event.chatId, chat: event.chat })}\n\n`);
+
+        // Generate title for the new chat
+        if (chatId) {
+          generateAndSaveTitle(chatId, prompt);
+        }
+        return;
+      }
+
+      if (event.type === 'done') {
+        res.write(`data: ${JSON.stringify({ type: 'message_complete' })}\n\n`);
+        emitter.removeListener('event', onEvent);
+        res.end();
+      } else if (event.type === 'error') {
+        res.write(`data: ${JSON.stringify({ type: 'message_error', content: event.content })}\n\n`);
+        emitter.removeListener('event', onEvent);
+        res.end();
+      } else if (event.type === 'permission_request' || event.type === 'user_question' || event.type === 'plan_review') {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      } else {
+        res.write(`data: ${JSON.stringify({ type: 'message_update' })}\n\n`);
+      }
+    };
+
+    emitter.on('event', onEvent);
+
+    req.on('close', () => {
+      emitter.removeListener('event', onEvent);
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Send a message and get SSE stream back
 streamRouter.post('/:id/message', async (req, res) => {

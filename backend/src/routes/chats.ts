@@ -194,10 +194,41 @@ chatsRouter.get('/', (req, res) => {
   }
 });
 
-// Create a chat (sessionId optional - will be assigned when Claude session starts)
+// Get folder info for new chat (without creating a chat)
+chatsRouter.get('/new/info', (req, res) => {
+  const folder = req.query.folder as string;
+  if (!folder) return res.status(400).json({ error: 'folder query param is required' });
+
+  // Check if folder exists
+  if (!existsSync(folder)) {
+    return res.status(400).json({ error: 'folder does not exist' });
+  }
+
+  // Get git info for the folder
+  let gitInfo: { isGitRepo: boolean; branch?: string } = { isGitRepo: false };
+  try {
+    gitInfo = getGitInfo(folder);
+  } catch {}
+
+  // Get slash commands for the folder
+  let slashCommands: any[] = [];
+  try {
+    slashCommands = getSlashCommandsForDirectory(folder);
+  } catch {}
+
+  res.json({
+    folder,
+    is_git_repo: gitInfo.isGitRepo,
+    git_branch: gitInfo.branch,
+    slash_commands: slashCommands,
+  });
+});
+
+// Create a chat (only when sessionId is known - for resuming sessions)
 chatsRouter.post('/', (req, res) => {
   const { folder, sessionId, defaultPermissions } = req.body;
   if (!folder) return res.status(400).json({ error: 'folder is required' });
+  if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
 
   // Create metadata with default permissions if provided
   const metadata = {
@@ -216,37 +247,16 @@ chatsRouter.post('/', (req, res) => {
     slashCommands = getSlashCommandsForDirectory(folder);
   } catch {}
 
-  // If sessionId provided, create in file storage
-  // Otherwise just return a temporary chat object (will be persisted when session starts)
-  if (sessionId) {
-    try {
-      const chat = chatFileService.createChat(folder, sessionId, JSON.stringify(metadata));
-      res.status(201).json({
-        ...chat,
-        is_git_repo: gitInfo.isGitRepo,
-        git_branch: gitInfo.branch,
-        slash_commands: slashCommands,
-      });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  } else {
-    // Return a temporary chat object - will be saved to file storage when session_id is assigned
-    const id = uuid();
-    const now = new Date().toISOString();
+  try {
+    const chat = chatFileService.createChat(folder, sessionId, JSON.stringify(metadata));
     res.status(201).json({
-      id,
-      folder,
-      session_id: null,
-      session_log_path: null,
-      metadata: JSON.stringify(metadata),
-      created_at: now,
-      updated_at: now,
+      ...chat,
       is_git_repo: gitInfo.isGitRepo,
       git_branch: gitInfo.branch,
       slash_commands: slashCommands,
-      _temporary: true
     });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 

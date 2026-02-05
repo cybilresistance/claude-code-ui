@@ -3,6 +3,7 @@ import { useRef } from 'react';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ChatList from '../pages/ChatList';
 import Chat from '../pages/Chat';
+import NewChat from '../pages/NewChat';
 
 interface SplitLayoutProps {
   onLogout: () => void;
@@ -13,8 +14,11 @@ export default function SplitLayout({ onLogout }: SplitLayoutProps) {
   const location = useLocation();
   const chatListRefreshRef = useRef<(() => void) | null>(null);
 
-  // Check if we're on a chat page
-  const chatMatch = location.pathname.match(/^\/chat\/(.+)$/);
+  // Check if we're on the new chat page
+  const isNewChat = location.pathname === '/chat/new';
+
+  // Check if we're on a chat page (but not the "new" page)
+  const chatMatch = !isNewChat && location.pathname.match(/^\/chat\/(.+)$/);
   const activeChatId = chatMatch ? chatMatch[1] : null;
 
   const refreshChatList = () => {
@@ -23,6 +27,9 @@ export default function SplitLayout({ onLogout }: SplitLayoutProps) {
 
   // Mobile behavior - keep existing full-page navigation
   if (isMobile) {
+    if (isNewChat) {
+      return <NewChat onChatListRefresh={refreshChatList} />;
+    }
     if (activeChatId) {
       return <Chat onChatListRefresh={refreshChatList} />;
     }
@@ -55,7 +62,9 @@ export default function SplitLayout({ onLogout }: SplitLayoutProps) {
         flexDirection: 'column',
         background: 'var(--bg)',
       }}>
-        {activeChatId ? (
+        {isNewChat ? (
+          <NewChat onChatListRefresh={refreshChatList} />
+        ) : activeChatId ? (
           <Chat onChatListRefresh={refreshChatList} />
         ) : (
           <div style={{

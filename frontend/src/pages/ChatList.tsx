@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ClipboardList, X, Plus, LogOut } from 'lucide-react';
-import { listChats, createChat, deleteChat, getSessionStatus, type Chat, type SessionStatus, type DefaultPermissions, type ChatListResponse } from '../api';
+import { listChats, deleteChat, getSessionStatus, type Chat, type SessionStatus, type DefaultPermissions, type ChatListResponse } from '../api';
 import ChatListItem from '../components/ChatListItem';
 import PermissionSettings from '../components/PermissionSettings';
 import ConfirmModal from '../components/ConfirmModal';
@@ -94,7 +94,7 @@ export default function ChatList({ onLogout, onRefresh }: ChatListProps) {
     setConfirmModal({ isOpen: false, path: '' });
   };
 
-  const handleCreate = async (dir?: string) => {
+  const handleCreate = (dir?: string) => {
     const target = dir || folder.trim();
     if (!target) return;
 
@@ -103,10 +103,12 @@ export default function ChatList({ onLogout, onRefresh }: ChatListProps) {
     addRecentDirectory(target);
     updateRecentDirs();
 
-    const chat = await createChat(target, defaultPermissions);
+    // Navigate to new chat page with folder and permissions
     setFolder('');
     setShowNew(false);
-    navigate(`/chat/${chat.id}`);
+    navigate(`/chat/new?folder=${encodeURIComponent(target)}`, {
+      state: { defaultPermissions }
+    });
   };
 
   const handleDelete = (chat: Chat) => {

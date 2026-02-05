@@ -51,12 +51,28 @@ export interface DefaultPermissions {
   webAccess: PermissionLevel;
 }
 
-export async function createChat(folder: string, defaultPermissions?: DefaultPermissions): Promise<Chat> {
+export async function createChat(folder: string, sessionId: string, defaultPermissions?: DefaultPermissions): Promise<Chat> {
   const res = await fetch(`${BASE}/chats`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ folder, defaultPermissions }),
+    body: JSON.stringify({ folder, sessionId, defaultPermissions }),
   });
+  return res.json();
+}
+
+export interface NewChatInfo {
+  folder: string;
+  is_git_repo: boolean;
+  git_branch?: string;
+  slash_commands: SlashCommand[];
+}
+
+export async function getNewChatInfo(folder: string): Promise<NewChatInfo> {
+  const res = await fetch(`${BASE}/chats/new/info?folder=${encodeURIComponent(folder)}`);
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.error || 'Failed to get chat info');
+  }
   return res.json();
 }
 
