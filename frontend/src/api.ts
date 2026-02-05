@@ -8,6 +8,8 @@ export interface Chat {
   metadata: string;
   created_at: string;
   updated_at: string;
+  is_git_repo?: boolean;
+  git_branch?: string;
 }
 
 export interface ParsedMessage {
