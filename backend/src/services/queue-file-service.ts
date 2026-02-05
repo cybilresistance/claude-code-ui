@@ -16,7 +16,7 @@ export interface QueueItem {
   chat_id: string | null;
   user_message: string;
   scheduled_time: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'draft' | 'pending' | 'running' | 'completed' | 'failed';
   created_at: string;
   retry_count: number;
   error_message: string | null;
@@ -74,7 +74,7 @@ export class QueueFileService {
   }
 
   // Create a new queue item
-  createQueueItem(chatId: string | null, userMessage: string, scheduledTime: string, folder?: string, defaultPermissions?: any): QueueItem {
+  createQueueItem(chatId: string | null, userMessage: string, scheduledTime: string, folder?: string, defaultPermissions?: any, isDraft: boolean = false): QueueItem {
     const id = uuid();
     const now = new Date().toISOString();
 
@@ -83,7 +83,7 @@ export class QueueFileService {
       chat_id: chatId,
       user_message: userMessage,
       scheduled_time: scheduledTime,
-      status: 'pending',
+      status: isDraft ? 'draft' : 'pending',
       created_at: now,
       retry_count: 0,
       error_message: null,
@@ -105,6 +105,19 @@ export class QueueFileService {
     const updatedItem = { ...item, ...updates };
     this.saveQueueItem(updatedItem);
     return true;
+  }
+
+  // Convert a draft to a scheduled item
+  convertDraftToScheduled(id: string, scheduledTime: string): boolean {
+    const item = this.getQueueItem(id);
+    if (!item || item.status !== 'draft') {
+      return false;
+    }
+
+    return this.updateQueueItem(id, {
+      status: 'pending',
+      scheduled_time: scheduledTime
+    });
   }
 
   // Delete a queue item (when completed successfully)

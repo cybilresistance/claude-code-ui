@@ -18,13 +18,20 @@ queueRouter.get('/', (req, res) => {
   }
 });
 
-// Schedule a new message
+// Schedule a new message or create a draft
 queueRouter.post('/', (req, res) => {
-  const { chat_id, user_message, scheduled_time, folder, defaultPermissions } = req.body;
+  const { chat_id, user_message, scheduled_time, folder, defaultPermissions, is_draft } = req.body;
 
-  if (!user_message || !scheduled_time) {
+  if (!user_message) {
     return res.status(400).json({
-      error: 'user_message and scheduled_time are required'
+      error: 'user_message is required'
+    });
+  }
+
+  // For scheduled items, scheduled_time is required
+  if (!is_draft && !scheduled_time) {
+    return res.status(400).json({
+      error: 'scheduled_time is required for non-draft items'
     });
   }
 
@@ -36,7 +43,14 @@ queueRouter.post('/', (req, res) => {
   }
 
   try {
-    const queueItem = queueFileService.createQueueItem(chat_id || null, user_message, scheduled_time, folder, defaultPermissions);
+    const queueItem = queueFileService.createQueueItem(
+      chat_id || null,
+      user_message,
+      scheduled_time || new Date().toISOString(),
+      folder,
+      defaultPermissions,
+      is_draft
+    );
     res.status(201).json(queueItem);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -68,6 +82,23 @@ queueRouter.delete('/:id', (req, res) => {
   }
 });
 
+// Convert a draft to a scheduled item
+queueRouter.post('/:id/convert-to-scheduled', (req, res) => {
+  const { scheduled_time } = req.body;
+
+  if (!scheduled_time) {
+    return res.status(400).json({ error: 'scheduled_time is required' });
+  }
+
+  const converted = queueFileService.convertDraftToScheduled(req.params.id, scheduled_time);
+
+  if (converted) {
+    res.json({ ok: true });
+  } else {
+    res.status(404).json({ error: 'Draft not found or cannot be converted' });
+  }
+});
+
 // Execute a queue item immediately
 queueRouter.post('/:id/execute-now', async (req, res) => {
   const queueItem = queueFileService.getQueueItem(req.params.id);
@@ -76,8 +107,8 @@ queueRouter.post('/:id/execute-now', async (req, res) => {
     return res.status(404).json({ error: 'Queue item not found' });
   }
 
-  if (queueItem.status !== 'pending') {
-    return res.status(400).json({ error: 'Queue item is not pending' });
+  if (queueItem.status !== 'pending' && queueItem.status !== 'draft') {
+    return res.status(400).json({ error: 'Queue item is not pending or draft' });
   }
 
   try {

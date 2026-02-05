@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, RotateCw, Clock } from 'lucide-react';
-import { getQueueItems, cancelQueueItem, executeNow, scheduleMessage, type QueueItem } from '../api';
+import { getQueueItems, cancelQueueItem, executeNow, scheduleMessage, convertDraftToScheduled, type QueueItem } from '../api';
 
 export default function Queue() {
   const navigate = useNavigate();
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<string>('pending');
+  const [activeTab, setActiveTab] = useState<string>('draft');
   const [error, setError] = useState<string | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [schedulingItem, setSchedulingItem] = useState<QueueItem | null>(null);
@@ -56,10 +56,14 @@ export default function Queue() {
     if (!schedulingItem || !scheduledTime) return;
 
     try {
-      // Cancel the existing item
-      await cancelQueueItem(schedulingItem.id);
-      // Create new scheduled item
-      await scheduleMessage(schedulingItem.chat_id, schedulingItem.user_message, new Date(scheduledTime).toISOString());
+      if (schedulingItem.status === 'draft') {
+        // Convert draft to scheduled
+        await convertDraftToScheduled(schedulingItem.id, new Date(scheduledTime).toISOString());
+      } else {
+        // Cancel the existing item and create new scheduled item
+        await cancelQueueItem(schedulingItem.id);
+        await scheduleMessage(schedulingItem.chat_id, schedulingItem.user_message, new Date(scheduledTime).toISOString());
+      }
       // Refresh the list
       await loadQueueItems(activeTab === 'all' ? undefined : activeTab);
       // Close modal
@@ -77,6 +81,7 @@ export default function Queue() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'draft': return '#8b5cf6';
       case 'pending': return '#f59e0b';
       case 'running': return '#3b82f6';
       case 'completed': return '#10b981';
@@ -86,6 +91,7 @@ export default function Queue() {
   };
 
   const tabs = [
+    { key: 'draft', label: 'Drafts', count: queueItems.filter(i => i.status === 'draft').length },
     { key: 'pending', label: 'Pending', count: queueItems.filter(i => i.status === 'pending').length },
     { key: 'running', label: 'Running', count: queueItems.filter(i => i.status === 'running').length },
     { key: 'completed', label: 'Completed', count: queueItems.filter(i => i.status === 'completed').length },
@@ -178,7 +184,7 @@ export default function Queue() {
           </div>
         ) : filteredItems.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-            No {activeTab === 'all' ? '' : activeTab} messages in queue
+            {activeTab === 'draft' ? 'No draft messages' : activeTab === 'all' ? 'No messages in queue' : `No ${activeTab} messages in queue`}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -228,7 +234,7 @@ export default function Queue() {
                     </div>
 
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 12, color: 'var(--text-muted)' }}>
-                      <span>Scheduled: {formatTime(item.scheduled_time)}</span>
+                      {item.status !== 'draft' && <span>Scheduled: {formatTime(item.scheduled_time)}</span>}
                       <span>Created: {formatTime(item.created_at)}</span>
                       <span>Chat ID: {item.chat_id}</span>
                     </div>
@@ -248,7 +254,7 @@ export default function Queue() {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
-                    {item.status === 'pending' && (
+                    {(item.status === 'draft' || item.status === 'pending') && (
                       <>
                         <button
                           onClick={() => handleExecuteNow(item.id)}
@@ -277,7 +283,7 @@ export default function Queue() {
                           }}
                         >
                           <Clock size={14} style={{ marginRight: 6 }} />
-                          Schedule
+                          {item.status === 'draft' ? 'Schedule' : 'Reschedule'}
                         </button>
                         <button
                           onClick={() => handleCancel(item.id)}

@@ -165,7 +165,7 @@ export interface QueueItem {
   chat_id: string | null;
   user_message: string;
   scheduled_time: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'draft' | 'pending' | 'running' | 'completed' | 'failed';
   created_at: string;
   retry_count: number;
   error_message: string | null;
@@ -191,11 +191,35 @@ export async function scheduleMessage(chatId: string | null, message: string, sc
       chat_id: chatId,
       user_message: message,
       scheduled_time: scheduledTime,
+      is_draft: false,
       ...(folder && { folder }),
       ...(defaultPermissions && { defaultPermissions })
     })
   });
   return res.json();
+}
+
+export async function createDraft(chatId: string | null, message: string, folder?: string, defaultPermissions?: DefaultPermissions): Promise<QueueItem> {
+  const res = await fetch(`${BASE}/queue`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      user_message: message,
+      is_draft: true,
+      ...(folder && { folder }),
+      ...(defaultPermissions && { defaultPermissions })
+    })
+  });
+  return res.json();
+}
+
+export async function convertDraftToScheduled(id: string, scheduledTime: string): Promise<void> {
+  await fetch(`${BASE}/queue/${id}/convert-to-scheduled`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scheduled_time: scheduledTime })
+  });
 }
 
 export async function cancelQueueItem(id: string): Promise<void> {
@@ -207,9 +231,8 @@ export async function executeNow(id: string): Promise<void> {
 }
 
 export async function addToBacklog(chatId: string | null, message: string, folder?: string, defaultPermissions?: DefaultPermissions): Promise<QueueItem> {
-  // Schedule for immediate execution (current time)
-  const now = new Date().toISOString();
-  return scheduleMessage(chatId, message, now, folder, defaultPermissions);
+  // Create as draft instead of immediate execution
+  return createDraft(chatId, message, folder, defaultPermissions);
 }
 
 export async function getSlashCommands(chatId: string): Promise<string[]> {
