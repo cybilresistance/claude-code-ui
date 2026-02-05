@@ -86,99 +86,112 @@ function discoverAllSessions(): { sessionId: string; folder: string; filePath: s
 
 // List all chats (pull from log directories, augment with file storage data)
 chatsRouter.get('/', (req, res) => {
-  // Get all file chats for augmentation lookup
-  const fileChats = chatFileService.getAllChats();
-
-  // Create lookup map for file data by session ID
-  const fileChatsBySessionId = new Map<string, any>();
-
-  for (const chat of fileChats) {
-    // Index by session_id
-    if (chat.session_id) {
-      fileChatsBySessionId.set(chat.session_id, chat);
-    }
-
-    // Also index by session_ids in metadata
+  try {
+    // Get all file chats for augmentation lookup (may be empty if no file storage)
+    let fileChats: any[] = [];
     try {
-      const meta = JSON.parse(chat.metadata || '{}');
-      if (Array.isArray(meta.session_ids)) {
-        for (const sid of meta.session_ids) {
-          fileChatsBySessionId.set(sid, chat);
-        }
-      }
-    } catch {}
-  }
-
-  // Discover all sessions from filesystem and augment with file storage data
-  const allSessions = discoverAllSessions();
-  const chatsFromLogs = allSessions.map(s => {
-    // Try to find by session ID
-    const fileChat = fileChatsBySessionId.get(s.sessionId);
-
-    // Get git info for the folder
-    const gitInfo = getGitInfo(s.folder);
-
-    if (fileChat) {
-      // Augment with file storage data while keeping filesystem as source of truth for timestamps
-      return {
-        ...fileChat,
-        // Keep filesystem timestamps as they're more accurate for actual activity
-        created_at: s.createdAt.toISOString(),
-        updated_at: s.updatedAt.toISOString(),
-        // Ensure session info from filesystem
-        session_id: s.sessionId,
-        session_log_path: s.filePath,
-        // Add git information
-        is_git_repo: gitInfo.isGitRepo,
-        git_branch: gitInfo.branch,
-        // Merge session_ids in metadata
-        metadata: (() => {
-          try {
-            const meta = JSON.parse(fileChat.metadata || '{}');
-            const sessionIds = Array.isArray(meta.session_ids) ? meta.session_ids : [];
-            if (!sessionIds.includes(s.sessionId)) {
-              sessionIds.push(s.sessionId);
-            }
-            return JSON.stringify({ ...meta, session_ids: sessionIds });
-          } catch {
-            return JSON.stringify({ session_ids: [s.sessionId] });
-          }
-        })(),
-        _augmented_from_file: true,
-      };
-    } else {
-      // No file record found, create from filesystem only
-      return {
-        id: s.sessionId,
-        folder: s.folder,
-        session_id: s.sessionId,
-        session_log_path: s.filePath,
-        metadata: JSON.stringify({ session_ids: [s.sessionId] }),
-        created_at: s.createdAt.toISOString(),
-        updated_at: s.updatedAt.toISOString(),
-        // Add git information
-        is_git_repo: gitInfo.isGitRepo,
-        git_branch: gitInfo.branch,
-        _from_filesystem: true,
-      };
+      fileChats = chatFileService.getAllChats() || [];
+    } catch (err) {
+      console.error('Error reading file chats, continuing with filesystem only:', err);
     }
-  });
 
-  const allChats = chatsFromLogs
-    .sort((a: any, b: any) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+    // Create lookup map for file data by session ID
+    const fileChatsBySessionId = new Map<string, any>();
 
-  // Handle pagination
-  const limit = parseInt(req.query.limit as string) || allChats.length;
-  const offset = parseInt(req.query.offset as string) || 0;
+    for (const chat of fileChats) {
+      // Index by session_id
+      if (chat?.session_id) {
+        fileChatsBySessionId.set(chat.session_id, chat);
+      }
 
-  const paginatedChats = allChats.slice(offset, offset + limit);
-  const hasMore = offset + limit < allChats.length;
+      // Also index by session_ids in metadata
+      try {
+        const meta = JSON.parse(chat?.metadata || '{}');
+        if (Array.isArray(meta.session_ids)) {
+          for (const sid of meta.session_ids) {
+            fileChatsBySessionId.set(sid, chat);
+          }
+        }
+      } catch {}
+    }
 
-  res.json({
-    chats: paginatedChats,
-    hasMore,
-    total: allChats.length
-  });
+    // Discover all sessions from filesystem and augment with file storage data
+    const allSessions = discoverAllSessions();
+    const chatsFromLogs = allSessions.map(s => {
+      // Try to find by session ID (may not exist in file storage - that's fine)
+      const fileChat = fileChatsBySessionId.get(s.sessionId);
+
+      // Get git info for the folder (with fallback)
+      let gitInfo: { isGitRepo: boolean; branch?: string } = { isGitRepo: false };
+      try {
+        gitInfo = getGitInfo(s.folder);
+      } catch {}
+
+      if (fileChat) {
+        // Augment with file storage data while keeping filesystem as source of truth for timestamps
+        return {
+          ...fileChat,
+          // Keep filesystem timestamps as they're more accurate for actual activity
+          created_at: s.createdAt.toISOString(),
+          updated_at: s.updatedAt.toISOString(),
+          // Ensure session info from filesystem
+          session_id: s.sessionId,
+          session_log_path: s.filePath,
+          // Add git information
+          is_git_repo: gitInfo.isGitRepo,
+          git_branch: gitInfo.branch,
+          // Merge session_ids in metadata
+          metadata: (() => {
+            try {
+              const meta = JSON.parse(fileChat.metadata || '{}');
+              const sessionIds = Array.isArray(meta.session_ids) ? meta.session_ids : [];
+              if (!sessionIds.includes(s.sessionId)) {
+                sessionIds.push(s.sessionId);
+              }
+              return JSON.stringify({ ...meta, session_ids: sessionIds });
+            } catch {
+              return JSON.stringify({ session_ids: [s.sessionId] });
+            }
+          })(),
+          _augmented_from_file: true,
+        };
+      } else {
+        // No file record found, create from filesystem only - this is normal
+        return {
+          id: s.sessionId,
+          folder: s.folder,
+          session_id: s.sessionId,
+          session_log_path: s.filePath,
+          metadata: JSON.stringify({ session_ids: [s.sessionId] }),
+          created_at: s.createdAt.toISOString(),
+          updated_at: s.updatedAt.toISOString(),
+          // Add git information
+          is_git_repo: gitInfo.isGitRepo,
+          git_branch: gitInfo.branch,
+          _from_filesystem: true,
+        };
+      }
+    });
+
+    const allChats = chatsFromLogs
+      .sort((a: any, b: any) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+
+    // Handle pagination
+    const limit = parseInt(req.query.limit as string) || allChats.length;
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    const paginatedChats = allChats.slice(offset, offset + limit);
+    const hasMore = offset + limit < allChats.length;
+
+    res.json({
+      chats: paginatedChats,
+      hasMore,
+      total: allChats.length
+    });
+  } catch (err: any) {
+    console.error('Error listing chats:', err);
+    res.status(500).json({ error: 'Failed to list chats', details: err.message });
+  }
 });
 
 // Create a chat (sessionId optional - will be assigned when Claude session starts)
@@ -217,56 +230,81 @@ chatsRouter.post('/', (req, res) => {
   }
 });
 
-// Delete a chat
+// Delete a chat (only deletes from file storage if it exists there)
 chatsRouter.delete('/:id', (req, res) => {
-  const chat = chatFileService.getChat(req.params.id);
-  if (!chat) return res.status(404).json({ error: 'Not found' });
-
-  const deleted = chatFileService.deleteChat(chat.session_id);
-  if (!deleted) return res.status(500).json({ error: 'Failed to delete chat' });
-
-  res.json({ ok: true });
+  try {
+    const chat = chatFileService.getChat(req.params.id);
+    if (chat) {
+      const deleted = chatFileService.deleteChat(chat.session_id);
+      if (!deleted) {
+        return res.status(500).json({ error: 'Failed to delete chat from storage' });
+      }
+    }
+    // Even if chat wasn't in file storage, return success (it may only exist in filesystem)
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error('Error deleting chat:', err);
+    res.status(500).json({ error: 'Failed to delete chat', details: err.message });
+  }
 });
 
 /**
  * Look up a chat by ID, checking the file storage first then falling back to filesystem.
+ * Returns null if chat not found in either location. Does not throw errors.
  */
 function findChat(id: string): any | null {
-  // Try file storage first
-  const fileChat = chatFileService.getChat(id);
-  if (fileChat) {
-    const logPath = findSessionLogPath(fileChat.session_id);
-    const gitInfo = getGitInfo(fileChat.folder);
+  try {
+    // Try file storage first
+    let fileChat = null;
+    try {
+      fileChat = chatFileService.getChat(id);
+    } catch (err) {
+      console.error('Error reading chat from file storage:', err);
+    }
+
+    if (fileChat) {
+      const logPath = findSessionLogPath(fileChat.session_id);
+      let gitInfo: { isGitRepo: boolean; branch?: string } = { isGitRepo: false };
+      try {
+        gitInfo = getGitInfo(fileChat.folder);
+      } catch {}
+      return {
+        ...fileChat,
+        session_log_path: logPath,
+        is_git_repo: gitInfo.isGitRepo,
+        git_branch: gitInfo.branch,
+      };
+    }
+
+    // Try filesystem fallback: id might be a session ID with no file storage
+    const logPath = findSessionLogPath(id);
+    if (!logPath) return null;
+
+    const projectDir = join(logPath, '..');
+    const dirName = projectDir.split('/').pop()!;
+    const st = statSync(logPath);
+    const folder = projectDirToFolder(dirName);
+    let gitInfo: { isGitRepo: boolean; branch?: string } = { isGitRepo: false };
+    try {
+      gitInfo = getGitInfo(folder);
+    } catch {}
+
     return {
-      ...fileChat,
+      id,
+      folder,
+      session_id: id,
       session_log_path: logPath,
+      metadata: JSON.stringify({ session_ids: [id] }),
+      created_at: st.birthtime.toISOString(),
+      updated_at: st.mtime.toISOString(),
       is_git_repo: gitInfo.isGitRepo,
       git_branch: gitInfo.branch,
+      _from_filesystem: true,
     };
+  } catch (err) {
+    console.error('Error finding chat:', err);
+    return null;
   }
-
-  // Try filesystem fallback: id might be a session ID with no file storage
-  const logPath = findSessionLogPath(id);
-  if (!logPath) return null;
-
-  const projectDir = join(logPath, '..');
-  const dirName = projectDir.split('/').pop()!;
-  const st = statSync(logPath);
-  const folder = projectDirToFolder(dirName);
-  const gitInfo = getGitInfo(folder);
-
-  return {
-    id,
-    folder,
-    session_id: id,
-    session_log_path: logPath,
-    metadata: JSON.stringify({ session_ids: [id] }),
-    created_at: st.birthtime.toISOString(),
-    updated_at: st.mtime.toISOString(),
-    is_git_repo: gitInfo.isGitRepo,
-    git_branch: gitInfo.branch,
-    _from_filesystem: true,
-  };
 }
 
 // Get a single chat
