@@ -61,7 +61,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
               setInFlightMessage(null); // Clear in-flight message
               // Refetch complete chat data and messages
               getChat(id!).then(setChat);
-              getMessages(id!).then(setMessages);
+              getMessages(id!).then(msgs => setMessages(Array.isArray(msgs) ? msgs : []));
               // Refresh slash commands in case they were discovered during initialization
               loadSlashCommands();
               return;
@@ -72,7 +72,8 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
               setInFlightMessage(null); // Clear in-flight message
               // Refetch messages to show any partial content, then add error
               getMessages(id!).then(msgs => {
-                setMessages([...msgs, { role: 'assistant', type: 'text', content: `Error: ${event.content}` }]);
+                const msgArray = Array.isArray(msgs) ? msgs : [];
+                setMessages([...msgArray, { role: 'assistant', type: 'text', content: `Error: ${event.content}` }]);
               });
               return;
             }
@@ -81,7 +82,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
               // Clear in-flight message once we get the first response
               setInFlightMessage(null);
               // New content is available - refetch all messages to show latest state with timestamps
-              getMessages(id!).then(setMessages);
+              getMessages(id!).then(msgs => setMessages(Array.isArray(msgs) ? msgs : []));
 
               // Check if this is the first response and we should refresh chat list
               if (!hasReceivedFirstResponseRef.current && onChatListRefresh) {
@@ -174,7 +175,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
     hasReceivedFirstResponseRef.current = false;
 
     getChat(id!).then(setChat);
-    getMessages(id!).then(setMessages);
+    getMessages(id!).then(msgs => setMessages(Array.isArray(msgs) ? msgs : []));
     getPending(id!).then(p => {
       if (p) {
         setPendingAction(p);
@@ -329,7 +330,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
     setNetworkError(null);
     // Refetch chat data and messages to capture any missing content
     getChat(id!).then(setChat);
-    getMessages(id!).then(setMessages);
+    getMessages(id!).then(msgs => setMessages(Array.isArray(msgs) ? msgs : []));
     getPending(id!).then(p => {
       if (p) {
         setPendingAction(p);
