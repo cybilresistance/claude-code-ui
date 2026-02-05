@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Home, Folder, FolderOpen, File, GitBranch, Eye, EyeOff, ChevronRight, ArrowUp } from 'lucide-react';
 import { browseDirectory, getFolderSuggestions, type BrowseResult, type FolderItem, type FolderSuggestion } from '../api/folders';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface FolderBrowserProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export default function FolderBrowser({
   onSelect,
   initialPath = '/'
 }: FolderBrowserProps) {
+  const isMobile = useIsMobile();
   const [currentPath, setCurrentPath] = useState(initialPath);
   const [browseResult, setBrowseResult] = useState<BrowseResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -101,22 +103,6 @@ export default function FolderBrowser({
     }))];
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -134,45 +120,45 @@ export default function FolderBrowser({
     }}>
       <div style={{
         background: 'var(--bg)',
-        borderRadius: 12,
-        width: '90%',
-        height: '90%',
-        maxWidth: 1000,
-        maxHeight: 700,
-        border: '1px solid var(--border)',
+        borderRadius: isMobile ? 0 : 12,
+        width: isMobile ? '100%' : '90%',
+        height: isMobile ? '100%' : '90%',
+        maxWidth: isMobile ? 'none' : 1000,
+        maxHeight: isMobile ? 'none' : 700,
+        border: isMobile ? 'none' : '1px solid var(--border)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
       }}>
         {/* Header */}
         <div style={{
-          padding: '16px 20px',
+          padding: isMobile ? '12px 16px' : '16px 20px',
           borderBottom: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           background: 'var(--bg-secondary)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Select Folder</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12 }}>
+            <h2 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 600, margin: 0 }}>Select Folder</h2>
             <button
               onClick={handleToggleHidden}
               style={{
                 background: showHidden ? 'var(--accent)' : 'var(--surface)',
                 color: showHidden ? '#fff' : 'var(--text)',
-                padding: '6px 12px',
+                padding: isMobile ? '4px 8px' : '6px 12px',
                 borderRadius: 6,
                 border: '1px solid var(--border)',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6,
-                fontSize: 13
+                gap: isMobile ? 4 : 6,
+                fontSize: isMobile ? 11 : 13
               }}
               title={showHidden ? 'Hide hidden files' : 'Show hidden files'}
             >
-              {showHidden ? <EyeOff size={14} /> : <Eye size={14} />}
-              {showHidden ? 'Hide hidden' : 'Show hidden'}
+              {showHidden ? <EyeOff size={isMobile ? 12 : 14} /> : <Eye size={isMobile ? 12 : 14} />}
+              {!isMobile && (showHidden ? 'Hide hidden' : 'Show hidden')}
             </button>
           </div>
           <button
@@ -180,19 +166,19 @@ export default function FolderBrowser({
             style={{
               background: 'none',
               border: 'none',
-              padding: 8,
+              padding: isMobile ? 6 : 8,
               cursor: 'pointer',
               color: 'var(--text-muted)',
               borderRadius: 6
             }}
           >
-            <X size={20} />
+            <X size={isMobile ? 18 : 20} />
           </button>
         </div>
 
         {/* Breadcrumb */}
         <div style={{
-          padding: '12px 20px',
+          padding: isMobile ? '8px 16px' : '12px 20px',
           borderBottom: '1px solid var(--border)',
           background: 'var(--surface)',
           display: 'flex',
@@ -209,16 +195,16 @@ export default function FolderBrowser({
                   border: 'none',
                   color: index === segments.length - 1 ? 'var(--text)' : 'var(--accent)',
                   cursor: index === segments.length - 1 ? 'default' : 'pointer',
-                  fontSize: 14,
+                  fontSize: isMobile ? 12 : 14,
                   padding: '4px 8px',
                   borderRadius: 4,
                   textDecoration: 'none'
                 }}
               >
-                {index === 0 ? <Home size={16} /> : segment.name}
+                {index === 0 ? <Home size={isMobile ? 14 : 16} /> : segment.name}
               </button>
               {index < segments.length - 1 && (
-                <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
+                <ChevronRight size={isMobile ? 12 : 14} style={{ color: 'var(--text-muted)' }} />
               )}
             </div>
           ))}
@@ -230,7 +216,8 @@ export default function FolderBrowser({
           display: 'flex',
           overflow: 'hidden'
         }}>
-          {/* Sidebar with suggestions */}
+          {/* Sidebar with suggestions - hidden on mobile */}
+          {!isMobile && (
           <div style={{
             width: 240,
             borderRight: '1px solid var(--border)',
@@ -274,6 +261,7 @@ export default function FolderBrowser({
               ))}
             </div>
           </div>
+          )}
 
           {/* Main content area */}
           <div style={{ flex: 1, overflow: 'auto' }}>
@@ -289,14 +277,14 @@ export default function FolderBrowser({
               </div>
             ) : error ? (
               <div style={{
-                padding: 20,
+                padding: isMobile ? 16 : 20,
                 color: 'var(--danger)',
                 textAlign: 'center'
               }}>
                 {error}
               </div>
             ) : browseResult ? (
-              <div style={{ padding: '12px 16px' }}>
+              <div style={{ padding: isMobile ? '8px 12px' : '12px 16px' }}>
                 {/* Parent directory link */}
                 {browseResult.parent && (
                   <div
@@ -305,17 +293,17 @@ export default function FolderBrowser({
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 8,
-                      padding: '8px 12px',
+                      gap: isMobile ? 6 : 8,
+                      padding: isMobile ? '6px 10px' : '8px 12px',
                       borderRadius: 6,
                       cursor: 'pointer',
-                      marginBottom: 8,
+                      marginBottom: isMobile ? 6 : 8,
                       background: 'var(--surface)',
                       border: '1px solid var(--border)'
                     }}
                   >
-                    <ArrowUp size={16} style={{ color: 'var(--text-muted)' }} />
-                    <span style={{ fontSize: 14 }}>.. (Parent Directory)</span>
+                    <ArrowUp size={isMobile ? 14 : 16} style={{ color: 'var(--text-muted)' }} />
+                    <span style={{ fontSize: isMobile ? 13 : 14 }}>.. (Parent Directory)</span>
                   </div>
                 )}
 
@@ -328,33 +316,31 @@ export default function FolderBrowser({
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 12,
-                      padding: '8px 12px',
+                      gap: isMobile ? 8 : 12,
+                      padding: isMobile ? '8px 10px' : '8px 12px',
                       borderRadius: 6,
                       cursor: 'pointer',
                       marginBottom: 2,
-                      opacity: item.isHidden ? 0.6 : 1
+                      opacity: item.isHidden ? 0.6 : 1,
+                      minHeight: isMobile ? 44 : 40  // Better touch target on mobile
                     }}
                     onMouseOver={e => e.currentTarget.style.background = 'var(--surface)'}
                     onMouseOut={e => e.currentTarget.style.background = 'transparent'}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 8, flex: 1, minWidth: 0 }}>
                       {item.isGitRepo ? (
-                        <GitBranch size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                        <GitBranch size={isMobile ? 14 : 16} style={{ color: 'var(--accent)', flexShrink: 0 }} />
                       ) : (
-                        <Folder size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                        <Folder size={isMobile ? 14 : 16} style={{ color: 'var(--accent)', flexShrink: 0 }} />
                       )}
                       <span style={{
-                        fontSize: 14,
+                        fontSize: isMobile ? 13 : 14,
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap'
                       }}>
                         {item.name}
                       </span>
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>
-                      {item.modified && formatDate(item.modified)}
                     </div>
                   </div>
                 ))}
@@ -363,8 +349,8 @@ export default function FolderBrowser({
                   <div style={{
                     textAlign: 'center',
                     color: 'var(--text-muted)',
-                    padding: 40,
-                    fontSize: 14
+                    padding: isMobile ? 30 : 40,
+                    fontSize: isMobile ? 13 : 14
                   }}>
                     This directory is empty
                   </div>
@@ -376,14 +362,14 @@ export default function FolderBrowser({
 
         {/* Footer */}
         <div style={{
-          padding: '12px 20px',
+          padding: isMobile ? '8px 16px' : '12px 20px',
           borderTop: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           background: 'var(--bg-secondary)'
         }}>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: isMobile ? 12 : 13, color: 'var(--text-muted)' }}>
             {browseResult && (
               <>
                 {browseResult.directories.length} folders
@@ -391,17 +377,17 @@ export default function FolderBrowser({
               </>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ display: 'flex', gap: isMobile ? 8 : 12 }}>
             <button
               onClick={onClose}
               style={{
                 background: 'var(--surface)',
                 color: 'var(--text)',
-                padding: '8px 16px',
+                padding: isMobile ? '6px 12px' : '8px 16px',
                 borderRadius: 6,
                 border: '1px solid var(--border)',
                 cursor: 'pointer',
-                fontSize: 14
+                fontSize: isMobile ? 13 : 14
               }}
             >
               Cancel
@@ -412,11 +398,11 @@ export default function FolderBrowser({
               style={{
                 background: browseResult?.exists ? 'var(--accent)' : 'var(--border)',
                 color: '#fff',
-                padding: '8px 16px',
+                padding: isMobile ? '6px 12px' : '8px 16px',
                 borderRadius: 6,
                 border: 'none',
                 cursor: browseResult?.exists ? 'pointer' : 'default',
-                fontSize: 14
+                fontSize: isMobile ? 13 : 14
               }}
             >
               Select Folder
