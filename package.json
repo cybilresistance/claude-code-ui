@@ -9,9 +9,8 @@
     "build": "npm run build:backend && npm run build:frontend",
     "build:backend": "tsc -p backend/tsconfig.json",
     "build:frontend": "tsc -p frontend/tsconfig.json && vite build --config frontend/vite.config.ts",
-    "start": "node backend/dist/index.js",
-    "preview": "vite preview --config frontend/vite.config.ts",
-    "redeploy:prod": "npm run build && pm2 restart claude-code-ui"
+    "start": "node start-server.js",
+    "preview": "vite preview --config frontend/vite.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "1.0.127",

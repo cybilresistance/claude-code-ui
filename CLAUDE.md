@@ -6,9 +6,9 @@
 
 ## Production Deployment
 
-- Production runs on port 8000 via PM2
-- To redeploy production, use: `npm run redeploy:prod`
-- Do NOT kill port 8000 directly - use PM2 to manage the process
+- Production runs on port 8000 with automatic PM2 detection
+- To redeploy production, use: `npm run build && npm start`
+- The start script automatically detects PM2 availability and restarts existing processes or starts new ones
 - PM2 commands: `pm2 list`, `pm2 logs claude-code-ui`, `pm2 restart claude-code-ui`
 
 ## Workflow Instructions

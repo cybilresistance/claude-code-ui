@@ -85,7 +85,7 @@ pm2 logs claude-code-ui
 pm2 list
 
 # Quick redeploy (build + restart)
-npm run redeploy:prod
+npm run build && npm start
 ```
 
 ## Project Structure
@@ -119,7 +119,6 @@ npm run redeploy:prod
 - `npm run dev` - Start development servers
 - `npm run build` - Build for production
 - `npm start` - Start production server
-- `npm run redeploy:prod` - Build and restart production
 
 ## License
 
