@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuid } from 'uuid';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
+import { execSync } from 'child_process';
 import { homedir } from 'os';
 import { join } from 'path';
 import { chatFileService } from '../services/chat-file-service.js';
@@ -10,6 +11,10 @@ import { getGitInfo } from '../utils/git.js';
 export const chatsRouter = Router();
 
 const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects');
+
+// Cache for git info to avoid repeated expensive operations
+const gitInfoCache = new Map<string, { isGitRepo: boolean; branch?: string; cachedAt: number }>();
+const GIT_CACHE_TTL = 300000; // 5 minutes
 
 /**
  * Find the session JSONL file in ~/.claude/projects/.
@@ -58,11 +63,93 @@ function projectDirToFolder(dirName: string): string {
 }
 
 /**
- * Discover all session JSONL files across all project dirs.
- * Returns entries with sessionId, folder, and file stats.
+ * Get cached git info or fetch and cache it
  */
-function discoverAllSessions(): { sessionId: string; folder: string; filePath: string; createdAt: Date; updatedAt: Date }[] {
-  if (!existsSync(CLAUDE_PROJECTS_DIR)) return [];
+function getCachedGitInfo(folder: string): { isGitRepo: boolean; branch?: string } {
+  const cached = gitInfoCache.get(folder);
+  const now = Date.now();
+
+  if (cached && (now - cached.cachedAt) < GIT_CACHE_TTL) {
+    return { isGitRepo: cached.isGitRepo, branch: cached.branch };
+  }
+
+  let gitInfo: { isGitRepo: boolean; branch?: string } = { isGitRepo: false };
+  try {
+    gitInfo = getGitInfo(folder);
+  } catch {}
+
+  gitInfoCache.set(folder, { ...gitInfo, cachedAt: now });
+  return gitInfo;
+}
+
+/**
+ * Discover session JSONL files using filesystem-level sorting for optimal performance.
+ * Only processes the files needed for the current page.
+ */
+function discoverSessionsPaginated(limit: number, offset: number): {
+  sessions: { sessionId: string; folder: string; filePath: string; createdAt: Date; updatedAt: Date }[];
+  total: number;
+} {
+  if (!existsSync(CLAUDE_PROJECTS_DIR)) return { sessions: [], total: 0 };
+
+  try {
+    // Use find command to get all .jsonl files sorted by modification time (newest first)
+    // This is much faster than Node.js file operations
+    const findCommand = `find "${CLAUDE_PROJECTS_DIR}" -name "*.jsonl" -type f -printf "%T@ %p\n" | sort -rn`;
+    const output = execSync(findCommand, { encoding: 'utf8' }).trim();
+
+    if (!output) return { sessions: [], total: 0 };
+
+    const allFiles = output.split('\n').map(line => {
+      const [timestamp, filePath] = line.split(' ', 2);
+      return { timestamp: parseFloat(timestamp), filePath };
+    });
+
+    const total = allFiles.length;
+
+    // Only process the files we need for this page
+    const pageFiles = allFiles.slice(offset, offset + limit);
+    const results: { sessionId: string; folder: string; filePath: string; createdAt: Date; updatedAt: Date }[] = [];
+
+    for (const { timestamp, filePath } of pageFiles) {
+      try {
+        const sessionId = filePath.split('/').pop()?.replace('.jsonl', '');
+        if (!sessionId) continue;
+
+        const projectDir = filePath.split('/').slice(0, -1).pop();
+        if (!projectDir) continue;
+
+        const folder = projectDirToFolder(projectDir);
+
+        // Get file stats only for files we're actually processing
+        const st = statSync(filePath);
+        results.push({
+          sessionId,
+          folder,
+          filePath,
+          createdAt: st.birthtime,
+          updatedAt: st.mtime
+        });
+      } catch {
+        continue;
+      }
+    }
+
+    return { sessions: results, total };
+  } catch (error) {
+    console.error('Error in optimized session discovery:', error);
+    // Fallback to original method if find command fails
+    return discoverAllSessionsFallback();
+  }
+}
+
+/**
+ * Fallback method that mimics original behavior
+ */
+function discoverAllSessionsFallback(): {
+  sessions: { sessionId: string; folder: string; filePath: string; createdAt: Date; updatedAt: Date }[];
+  total: number;
+} {
   const results: { sessionId: string; folder: string; filePath: string; createdAt: Date; updatedAt: Date }[] = [];
   for (const dir of readdirSync(CLAUDE_PROJECTS_DIR)) {
     const dirPath = join(CLAUDE_PROJECTS_DIR, dir);
@@ -81,7 +168,8 @@ function discoverAllSessions(): { sessionId: string; folder: string; filePath: s
       } catch { continue; }
     }
   }
-  return results;
+  results.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  return { sessions: results, total: results.length };
 }
 
 // List all chats (pull from log directories, augment with file storage data)
@@ -115,17 +203,18 @@ chatsRouter.get('/', (req, res) => {
       } catch {}
     }
 
-    // Discover all sessions from filesystem and augment with file storage data
-    const allSessions = discoverAllSessions();
-    const chatsFromLogs = allSessions.map(s => {
+    // Handle pagination
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    // Use optimized pagination to discover only the sessions we need
+    const { sessions: paginatedSessions, total } = discoverSessionsPaginated(limit, offset);
+    const chatsFromLogs = paginatedSessions.map(s => {
       // Try to find by session ID (may not exist in file storage - that's fine)
       const fileChat = fileChatsBySessionId.get(s.sessionId);
 
-      // Get git info for the folder (with fallback)
-      let gitInfo: { isGitRepo: boolean; branch?: string } = { isGitRepo: false };
-      try {
-        gitInfo = getGitInfo(s.folder);
-      } catch {}
+      // Get cached git info for the folder (with fallback)
+      const gitInfo = getCachedGitInfo(s.folder);
 
       if (fileChat) {
         // Augment with file storage data while keeping filesystem as source of truth for timestamps
@@ -173,20 +262,13 @@ chatsRouter.get('/', (req, res) => {
       }
     });
 
-    const allChats = chatsFromLogs
-      .sort((a: any, b: any) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
-
-    // Handle pagination
-    const limit = parseInt(req.query.limit as string) || allChats.length;
-    const offset = parseInt(req.query.offset as string) || 0;
-
-    const paginatedChats = allChats.slice(offset, offset + limit);
-    const hasMore = offset + limit < allChats.length;
+    // Sessions are already sorted by the optimized discovery function
+    const hasMore = offset + limit < total;
 
     res.json({
-      chats: paginatedChats,
+      chats: chatsFromLogs,
       hasMore,
-      total: allChats.length
+      total
     });
   } catch (err: any) {
     console.error('Error listing chats:', err);
