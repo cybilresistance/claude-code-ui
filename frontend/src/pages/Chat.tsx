@@ -509,7 +509,8 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
         )}
       </header>
 
-      <div ref={chatContainerRef} style={{ flex: 1, overflow: 'auto', padding: '12px 16px', position: 'relative' }}>
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <div ref={chatContainerRef} style={{ height: '100%', overflow: 'auto', padding: '12px 16px' }}>
         {messages.length === 0 && !streaming && (
           <p style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 40 }}>
             Send a message to start coding.
@@ -589,6 +590,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
           </div>
         )}
         <div ref={bottomRef} />
+        </div>
 
         {/* Scroll to bottom button */}
         {showScrollToBottom && (
