@@ -29,6 +29,7 @@ export default function NewChat({ onChatListRefresh }: NewChatProps = {}) {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [slashCommands, setSlashCommands] = useState<string[]>([]);
   const [plugins, setPlugins] = useState<Plugin[]>([]);
+  const [activePluginIds, setActivePluginIds] = useState<string[]>([]);
   const [showSlashCommandsModal, setShowSlashCommandsModal] = useState(false);
   const [promptInputSetValue, setPromptInputSetValue] = useState<((value: string) => void) | null>(null);
   const [showDraftModal, setShowDraftModal] = useState(false);
@@ -60,6 +61,29 @@ export default function NewChat({ onChatListRefresh }: NewChatProps = {}) {
       });
   }, [folder]);
 
+  // Load active plugins from localStorage and listen for changes
+  useEffect(() => {
+    const loadActivePlugins = () => {
+      try {
+        const active = localStorage.getItem('activePlugins');
+        setActivePluginIds(active ? JSON.parse(active) : []);
+      } catch {
+        setActivePluginIds([]);
+      }
+    };
+
+    loadActivePlugins();
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'activePlugins') {
+        loadActivePlugins();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   const handleSend = useCallback(async (prompt: string, images?: File[]) => {
     if (!folder) return;
 
@@ -83,11 +107,16 @@ export default function NewChat({ onChatListRefresh }: NewChatProps = {}) {
     abortRef.current = controller;
 
     try {
+      const requestBody: any = { folder, prompt, defaultPermissions };
+      if (activePluginIds.length > 0) {
+        requestBody.activePlugins = activePluginIds;
+      }
+
       const res = await fetch('/api/chats/new/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ folder, prompt, defaultPermissions }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
 
@@ -169,7 +198,7 @@ export default function NewChat({ onChatListRefresh }: NewChatProps = {}) {
         abortRef.current = null;
       }
     }
-  }, [folder, defaultPermissions, navigate, onChatListRefresh]);
+  }, [folder, defaultPermissions, navigate, onChatListRefresh, activePluginIds]);
 
   const handleRespond = useCallback(async (allow: boolean, updatedInput?: Record<string, unknown>) => {
     // For new chats, we need to respond using the temp chat ID
@@ -450,6 +479,7 @@ export default function NewChat({ onChatListRefresh }: NewChatProps = {}) {
         slashCommands={slashCommands}
         plugins={plugins}
         onCommandSelect={handleCommandSelect}
+        onActivePluginsChange={setActivePluginIds}
       />
 
       {/* New Chat Draft Modal */}

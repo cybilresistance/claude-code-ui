@@ -29,6 +29,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
   const [inFlightMessage, setInFlightMessage] = useState<string | null>(null);
   const [slashCommands, setSlashCommands] = useState<string[]>([]);
   const [plugins, setPlugins] = useState<Plugin[]>([]);
+  const [activePluginIds, setActivePluginIds] = useState<string[]>([]);
   const [showSlashCommandsModal, setShowSlashCommandsModal] = useState(false);
   const [promptInputSetValue, setPromptInputSetValue] = useState<((value: string) => void) | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -213,6 +214,30 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length, inFlightMessage, autoScroll]);
 
+  // Load active plugins from localStorage and listen for changes
+  useEffect(() => {
+    const loadActivePlugins = () => {
+      try {
+        const active = localStorage.getItem('activePlugins');
+        setActivePluginIds(active ? JSON.parse(active) : []);
+      } catch {
+        setActivePluginIds([]);
+      }
+    };
+
+    loadActivePlugins();
+
+    // Listen for storage changes (when SlashCommandsModal updates activePlugins)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'activePlugins') {
+        loadActivePlugins();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   const toggleAutoScroll = useCallback(() => {
     setAutoScroll(prev => {
       const newAutoScroll = !prev;
@@ -266,6 +291,9 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
       if (imageIds.length > 0) {
         body.imageIds = imageIds;
       }
+      if (activePluginIds.length > 0) {
+        body.activePlugins = activePluginIds;
+      }
 
       const res = await fetch(`/api/chats/${id}/message`, {
         method: 'POST',
@@ -295,7 +323,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
         abortRef.current = null;
       }
     }
-  }, [id, readSSE]);
+  }, [id, readSSE, activePluginIds]);
 
   const handleRespond = useCallback(async (allow: boolean, updatedInput?: Record<string, unknown>) => {
     const wasReconnect = !abortRef.current; // no active SSE = page was refreshed
@@ -734,6 +762,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
         slashCommands={slashCommands}
         plugins={plugins}
         onCommandSelect={handleCommandSelect}
+        onActivePluginsChange={setActivePluginIds}
       />
     </div>
   );

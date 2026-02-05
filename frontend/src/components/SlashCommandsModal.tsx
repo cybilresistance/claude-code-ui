@@ -8,6 +8,7 @@ interface Props {
   slashCommands: string[];
   plugins?: Plugin[];
   onCommandSelect?: (command: string) => void;
+  onActivePluginsChange?: (activePluginIds: string[]) => void;
 }
 
 function getCommandDescription(command: string): string {
@@ -65,7 +66,7 @@ function setActivePlugins(activeIds: Set<string>): void {
   }
 }
 
-export default function SlashCommandsModal({ isOpen, onClose, slashCommands, plugins = [], onCommandSelect }: Props) {
+export default function SlashCommandsModal({ isOpen, onClose, slashCommands, plugins = [], onCommandSelect, onActivePluginsChange }: Props) {
   const [activePluginIds, setActivePluginIds] = useState<Set<string>>(new Set());
 
   // Load active plugins from localStorage on mount
@@ -83,6 +84,7 @@ export default function SlashCommandsModal({ isOpen, onClose, slashCommands, plu
     }
     setActivePluginIds(newActiveIds);
     setActivePlugins(newActiveIds);
+    onActivePluginsChange?.(Array.from(newActiveIds));
   };
 
   if (!isOpen) return null;
