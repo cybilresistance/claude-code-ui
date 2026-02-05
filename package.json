@@ -18,7 +18,7 @@
     "lint:all:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "1.0.127",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.32",
     "@openrouter/sdk": "^0.5.1",
     "@types/multer": "^2.0.0",
     "cookie-parser": "^1.4.7",

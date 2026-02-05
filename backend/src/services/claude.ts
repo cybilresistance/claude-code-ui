@@ -1,5 +1,5 @@
-import { query } from '@anthropic-ai/claude-code';
-import type { PermissionResult } from '@anthropic-ai/claude-code';
+import { query } from '@anthropic-ai/claude-agent-sdk';
+import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { EventEmitter } from 'events';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
