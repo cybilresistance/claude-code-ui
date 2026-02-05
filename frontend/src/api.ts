@@ -1,5 +1,11 @@
 const BASE = '/api';
 
+export interface SlashCommand {
+  name: string;
+  description?: string;
+  source?: string;
+}
+
 export interface Chat {
   id: string;
   folder: string;
@@ -10,6 +16,7 @@ export interface Chat {
   updated_at: string;
   is_git_repo?: boolean;
   git_branch?: string;
+  slash_commands?: SlashCommand[];
 }
 
 export interface ParsedMessage {

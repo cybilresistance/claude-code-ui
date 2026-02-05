@@ -204,12 +204,29 @@ chatsRouter.post('/', (req, res) => {
     ...(defaultPermissions && { defaultPermissions })
   };
 
+  // Get git info for the folder
+  let gitInfo: { isGitRepo: boolean; branch?: string } = { isGitRepo: false };
+  try {
+    gitInfo = getGitInfo(folder);
+  } catch {}
+
+  // Get slash commands for the folder
+  let slashCommands: any[] = [];
+  try {
+    slashCommands = getSlashCommandsForDirectory(folder);
+  } catch {}
+
   // If sessionId provided, create in file storage
   // Otherwise just return a temporary chat object (will be persisted when session starts)
   if (sessionId) {
     try {
       const chat = chatFileService.createChat(folder, sessionId, JSON.stringify(metadata));
-      res.status(201).json(chat);
+      res.status(201).json({
+        ...chat,
+        is_git_repo: gitInfo.isGitRepo,
+        git_branch: gitInfo.branch,
+        slash_commands: slashCommands,
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -225,6 +242,9 @@ chatsRouter.post('/', (req, res) => {
       metadata: JSON.stringify(metadata),
       created_at: now,
       updated_at: now,
+      is_git_repo: gitInfo.isGitRepo,
+      git_branch: gitInfo.branch,
+      slash_commands: slashCommands,
       _temporary: true
     });
   }
@@ -309,9 +329,21 @@ function findChat(id: string): any | null {
 
 // Get a single chat
 chatsRouter.get('/:id', (req, res) => {
-  const chat = findChat(req.params.id);
+  const chat = findChat(req.params.id) as any;
   if (!chat) return res.status(404).json({ error: 'Not found' });
-  res.json(chat);
+
+  // Include slash commands for the chat's folder
+  let slashCommands: any[] = [];
+  try {
+    if (chat.folder) {
+      slashCommands = getSlashCommandsForDirectory(chat.folder);
+    }
+  } catch {}
+
+  res.json({
+    ...chat,
+    slash_commands: slashCommands,
+  });
 });
 
 function readJsonlFile(path: string): any[] {
