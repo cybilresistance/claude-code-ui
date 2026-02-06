@@ -66,7 +66,8 @@ export async function listChats(limit?: number, offset?: number): Promise<ChatLi
 export type PermissionLevel = 'allow' | 'ask' | 'deny';
 
 export interface DefaultPermissions {
-  fileOperations: PermissionLevel;
+  fileRead: PermissionLevel;
+  fileWrite: PermissionLevel;
   codeExecution: PermissionLevel;
   webAccess: PermissionLevel;
 }

@@ -80,9 +80,15 @@ export default function PermissionSettings({ permissions, onChange }: Permission
       </div>
 
       <PermissionRow
-        label="File Operations"
-        description="Read, write, edit files and search code"
-        category="fileOperations"
+        label="File Read"
+        description="Read files, search code, and list directories"
+        category="fileRead"
+      />
+
+      <PermissionRow
+        label="File Write"
+        description="Create, edit, and modify files"
+        category="fileWrite"
       />
 
       <PermissionRow

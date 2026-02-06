@@ -15,10 +15,37 @@ interface LocalStorageData {
 }
 
 const DEFAULT_PERMISSIONS: DefaultPermissions = {
-  fileOperations: 'ask',
+  fileRead: 'ask',
+  fileWrite: 'ask',
   codeExecution: 'ask',
   webAccess: 'ask',
 };
+
+/**
+ * Migrate old 3-category permissions to new 4-category format.
+ * If old format detected (has fileOperations), convert:
+ *   fileOperations -> fileRead + fileWrite
+ *   codeExecution, webAccess -> pass through unchanged
+ */
+function migratePermissions(permissions: any): DefaultPermissions {
+  // Already new format
+  if (permissions.fileRead !== undefined && permissions.fileWrite !== undefined) {
+    return permissions as DefaultPermissions;
+  }
+
+  // Old format: { fileOperations, codeExecution, webAccess }
+  if (permissions.fileOperations !== undefined) {
+    return {
+      fileRead: permissions.fileOperations,
+      fileWrite: permissions.fileOperations,
+      codeExecution: permissions.codeExecution || 'ask',
+      webAccess: permissions.webAccess || 'ask',
+    };
+  }
+
+  // Unknown format, return defaults
+  return DEFAULT_PERMISSIONS;
+}
 
 function getStorageData(): LocalStorageData {
   try {
@@ -39,7 +66,10 @@ function setStorageData(data: LocalStorageData): void {
 
 export function getDefaultPermissions(): DefaultPermissions {
   const data = getStorageData();
-  return data.defaultPermissions || DEFAULT_PERMISSIONS;
+  if (data.defaultPermissions) {
+    return migratePermissions(data.defaultPermissions);
+  }
+  return DEFAULT_PERMISSIONS;
 }
 
 export function saveDefaultPermissions(permissions: DefaultPermissions): void {

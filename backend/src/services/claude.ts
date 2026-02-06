@@ -78,19 +78,52 @@ function buildPluginOptions(folder: string, activePluginIds?: string[]): any[] {
 type PermissionLevel = 'allow' | 'ask' | 'deny';
 
 interface DefaultPermissions {
-  fileOperations: PermissionLevel;
+  fileRead: PermissionLevel;
+  fileWrite: PermissionLevel;
   codeExecution: PermissionLevel;
   webAccess: PermissionLevel;
 }
 
-function categorizeToolPermission(toolName: string): keyof DefaultPermissions | null {
-  // File operations
-  if (['Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep'].includes(toolName)) {
-    return 'fileOperations';
+/**
+ * Migrate old 3-category permissions to new 4-category format.
+ * If old format detected (has fileOperations), convert:
+ *   fileOperations -> fileRead + fileWrite
+ *   codeExecution, webAccess -> pass through unchanged
+ */
+function migratePermissions(permissions: any): DefaultPermissions | null {
+  if (!permissions) return null;
+
+  // Already new format
+  if (permissions.fileRead !== undefined && permissions.fileWrite !== undefined) {
+    return permissions as DefaultPermissions;
   }
 
-  // Code execution
-  if (['Bash', 'NotebookEdit'].includes(toolName)) {
+  // Old format: { fileOperations, codeExecution, webAccess }
+  if (permissions.fileOperations !== undefined) {
+    return {
+      fileRead: permissions.fileOperations,
+      fileWrite: permissions.fileOperations,
+      codeExecution: permissions.codeExecution || 'ask',
+      webAccess: permissions.webAccess || 'ask',
+    };
+  }
+
+  return null;
+}
+
+function categorizeToolPermission(toolName: string): keyof DefaultPermissions | null {
+  // File read operations (read-only)
+  if (['Read', 'Glob', 'Grep'].includes(toolName)) {
+    return 'fileRead';
+  }
+
+  // File write operations (create, modify)
+  if (['Write', 'Edit', 'MultiEdit'].includes(toolName)) {
+    return 'fileWrite';
+  }
+
+  // Code execution (bash commands, notebooks, shell management)
+  if (['Bash', 'NotebookEdit', 'KillShell'].includes(toolName)) {
     return 'codeExecution';
   }
 
@@ -100,12 +133,12 @@ function categorizeToolPermission(toolName: string): keyof DefaultPermissions | 
   }
 
   // Tools that don't need permission checks (always allowed)
-  if (['TodoWrite', 'Task', 'ExitPlanMode', 'AskUserQuestion', 'SlashCommand', 'BashOutput', 'KillShell'].includes(toolName)) {
+  if (['TodoWrite', 'Task', 'ExitPlanMode', 'AskUserQuestion', 'SlashCommand', 'BashOutput', 'Config', 'ListMcpResources', 'ReadMcpResource'].includes(toolName)) {
     return null;
   }
 
-  // Default to file operations for unknown tools
-  return 'fileOperations';
+  // Default to fileWrite for unknown tools (conservative)
+  return 'fileWrite';
 }
 
 export function getActiveSession(chatId: string): ActiveSession | undefined {
@@ -250,7 +283,7 @@ export async function sendMessage(chatId: string, prompt: string | any, imageMet
         if (category) {
           try {
             const metadata = JSON.parse(chat.metadata || '{}');
-            const defaultPermissions: DefaultPermissions = metadata.defaultPermissions;
+            const defaultPermissions = migratePermissions(metadata.defaultPermissions);
 
             if (defaultPermissions && defaultPermissions[category]) {
               const permission = defaultPermissions[category];
@@ -466,8 +499,9 @@ export async function sendNewMessage(
         { signal, suggestions }: { signal: AbortSignal; suggestions?: unknown[] },
       ): Promise<PermissionResult> => {
         const category = categorizeToolPermission(toolName);
-        if (category && defaultPermissions && defaultPermissions[category]) {
-          const permission = defaultPermissions[category];
+        const migratedPermissions = migratePermissions(defaultPermissions);
+        if (category && migratedPermissions && migratedPermissions[category]) {
+          const permission = migratedPermissions[category];
           if (permission === 'allow') {
             return { behavior: 'allow', updatedInput: input };
           } else if (permission === 'deny') {
@@ -647,7 +681,7 @@ export async function sendSlashCommand(chatId: string, command: string, activePl
         if (category) {
           try {
             const metadata = JSON.parse(chat.metadata || '{}');
-            const defaultPermissions: DefaultPermissions = metadata.defaultPermissions;
+            const defaultPermissions = migratePermissions(metadata.defaultPermissions);
 
             if (defaultPermissions && defaultPermissions[category]) {
               const permission = defaultPermissions[category];
