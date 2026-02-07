@@ -4,6 +4,9 @@ import { homedir } from "os";
 
 export const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
 
+/** Absolute path to the project data directory (stable across dev/prod). */
+export const DATA_DIR = join(process.cwd(), "data");
+
 function isDirectory(p: string): boolean {
   try {
     return statSync(p).isDirectory();

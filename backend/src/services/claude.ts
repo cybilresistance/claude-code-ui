@@ -2,34 +2,31 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { PermissionResult } from "@anthropic-ai/claude-agent-sdk";
 import { EventEmitter } from "events";
 import { appendFileSync, mkdirSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { chatFileService } from "./chat-file-service.js";
 import { setSlashCommandsForDirectory } from "./slashCommands.js";
+import type { DefaultPermissions } from "shared/types/index.js";
+import type { StreamEvent } from "shared/types/index.js";
+import { migratePermissions } from "shared/types/index.js";
 import { getPluginsForDirectory, type Plugin } from "./plugins.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const logDir = join(__dirname, "../../logs");
-mkdirSync(logDir, { recursive: true });
-const debugLogFile = join(logDir, "slash-commands-debug.log");
+export type { StreamEvent };
 
-function logDebug(message: string, data?: any) {
-  const timestamp = new Date().toISOString();
-  const logEntry = data ? `[${timestamp}] ${message}\n${JSON.stringify(data, null, 2)}\n\n` : `[${timestamp}] ${message}\n\n`;
+const isDebug = process.env.NODE_ENV !== "production";
+let debugLogFile: string | null = null;
 
-  console.log(`[SLASH-DEBUG] ${message}`, data || "");
-  appendFileSync(debugLogFile, logEntry);
+if (isDebug) {
+  const logDir = join(process.cwd(), "logs");
+  mkdirSync(logDir, { recursive: true });
+  debugLogFile = join(logDir, "slash-commands-debug.log");
 }
 
-export interface StreamEvent {
-  type: "text" | "thinking" | "tool_use" | "tool_result" | "done" | "error" | "permission_request" | "user_question" | "plan_review" | "chat_created";
-  content: string;
-  toolName?: string;
-  input?: Record<string, unknown>;
-  questions?: unknown[];
-  suggestions?: unknown[];
-  chatId?: string;
-  chat?: any;
+function logDebug(message: string, data?: any) {
+  if (!isDebug) return;
+  const timestamp = new Date().toISOString();
+  const logEntry = data ? `[${timestamp}] ${message}\n${JSON.stringify(data, null, 2)}\n\n` : `[${timestamp}] ${message}\n\n`;
+  console.log(`[SLASH-DEBUG] ${message}`, data || "");
+  if (debugLogFile) appendFileSync(debugLogFile, logEntry);
 }
 
 interface PendingRequest {
@@ -70,42 +67,6 @@ function buildPluginOptions(folder: string, activePluginIds?: string[]): any[] {
     console.warn("Failed to build plugin options:", error);
     return [];
   }
-}
-
-type PermissionLevel = "allow" | "ask" | "deny";
-
-interface DefaultPermissions {
-  fileRead: PermissionLevel;
-  fileWrite: PermissionLevel;
-  codeExecution: PermissionLevel;
-  webAccess: PermissionLevel;
-}
-
-/**
- * Migrate old 3-category permissions to new 4-category format.
- * If old format detected (has fileOperations), convert:
- *   fileOperations -> fileRead + fileWrite
- *   codeExecution, webAccess -> pass through unchanged
- */
-function migratePermissions(permissions: any): DefaultPermissions | null {
-  if (!permissions) return null;
-
-  // Already new format
-  if (permissions.fileRead !== undefined && permissions.fileWrite !== undefined) {
-    return permissions as DefaultPermissions;
-  }
-
-  // Old format: { fileOperations, codeExecution, webAccess }
-  if (permissions.fileOperations !== undefined) {
-    return {
-      fileRead: permissions.fileOperations,
-      fileWrite: permissions.fileOperations,
-      codeExecution: permissions.codeExecution || "ask",
-      webAccess: permissions.webAccess || "ask",
-    };
-  }
-
-  return null;
 }
 
 function categorizeToolPermission(toolName: string): keyof DefaultPermissions | null {
@@ -155,7 +116,12 @@ export function getPendingRequest(chatId: string): Omit<PendingRequest, "resolve
   return rest;
 }
 
-export function respondToPermission(chatId: string, allow: boolean, updatedInput?: Record<string, unknown>, updatedPermissions?: unknown[]): { ok: boolean; toolName?: string } {
+export function respondToPermission(
+  chatId: string,
+  allow: boolean,
+  updatedInput?: Record<string, unknown>,
+  updatedPermissions?: unknown[],
+): { ok: boolean; toolName?: string } {
   const pending = pendingRequests.get(chatId);
   if (!pending) return { ok: false };
   const toolName = pending.toolName;
@@ -188,10 +154,7 @@ export function stopSession(chatId: string): boolean {
  * Build the SDK prompt from text and optional images.
  * Returns either a plain string or an AsyncIterable<SDKUserMessage> for multimodal content.
  */
-function buildFormattedPrompt(
-  prompt: string | any,
-  imageMetadata?: { buffer: Buffer; mimeType: string }[],
-): string | AsyncIterable<any> {
+function buildFormattedPrompt(prompt: string | any, imageMetadata?: { buffer: Buffer; mimeType: string }[]): string | AsyncIterable<any> {
   if (!imageMetadata || imageMetadata.length === 0) {
     return prompt;
   }
@@ -227,11 +190,7 @@ function buildFormattedPrompt(
  * Build the canUseTool permission handler for the Claude SDK.
  * Uses a getter function for the tracking ID since it may change mid-session (new chat flow).
  */
-function buildCanUseTool(
-  emitter: EventEmitter,
-  getDefaultPermissions: () => DefaultPermissions | null,
-  getTrackingId: () => string,
-) {
+function buildCanUseTool(emitter: EventEmitter, getDefaultPermissions: () => DefaultPermissions | null, getTrackingId: () => string) {
   return async (
     toolName: string,
     input: Record<string, unknown>,
@@ -492,4 +451,3 @@ export async function sendMessage(opts: SendMessageOptions): Promise<EventEmitte
 
   return emitter;
 }
-

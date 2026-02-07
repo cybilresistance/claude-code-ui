@@ -1,32 +1,16 @@
 import { v4 as uuid } from "uuid";
 import { writeFileSync, mkdirSync, existsSync, readFileSync, unlinkSync, readdirSync, statSync } from "fs";
-import { join, dirname, extname } from "path";
-import { fileURLToPath } from "url";
+import { join, extname } from "path";
 import crypto from "crypto";
+import type { StoredImage, ImageUploadResult } from "shared/types/index.js";
+import { DATA_DIR } from "../utils/paths.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const IMAGES_DIR = join(__dirname, "..", "..", "data", "images");
+export type { StoredImage, ImageUploadResult };
+
+const IMAGES_DIR = join(DATA_DIR, "images");
 
 // Ensure images directory exists
 mkdirSync(IMAGES_DIR, { recursive: true });
-
-export interface StoredImage {
-  id: string;
-  filename: string;
-  originalName: string;
-  storedAs: string;
-  mimeType: string;
-  size: number;
-  sha256: string;
-  uploadedAt: string;
-  storagePath: string;
-}
-
-export interface ImageUploadResult {
-  success: boolean;
-  image?: StoredImage;
-  error?: string;
-}
 
 // UUID v4 format: 8-4-4-4-12 hex characters
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

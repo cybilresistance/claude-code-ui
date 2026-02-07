@@ -2,45 +2,13 @@ import { Router } from "express";
 import { sendMessage, getActiveSession, stopSession, respondToPermission, hasPendingRequest, getPendingRequest, type StreamEvent } from "../services/claude.js";
 import { OpenRouterClient } from "../services/openrouter-client.js";
 import { ImageStorageService } from "../services/image-storage.js";
-import { statSync, existsSync, readdirSync, watchFile, unwatchFile, openSync, readSync, closeSync } from "fs";
-import { join } from "path";
+import { statSync, existsSync, watchFile, unwatchFile, openSync, readSync, closeSync } from "fs";
 import { chatFileService } from "../services/chat-file-service.js";
 import { ensureWorktree, switchBranch } from "../utils/git.js";
-import { CLAUDE_PROJECTS_DIR } from "../utils/paths.js";
+import { findSessionLogPath } from "../utils/session-log.js";
+import { findChatForStatus } from "../utils/chat-lookup.js";
 
 export const streamRouter = Router();
-
-/**
- * Find the session JSONL file in ~/.claude/projects/.
- */
-function findSessionLogPath(sessionId: string): string | null {
-  if (!existsSync(CLAUDE_PROJECTS_DIR)) return null;
-  try {
-    for (const dir of readdirSync(CLAUDE_PROJECTS_DIR)) {
-      const candidate = join(CLAUDE_PROJECTS_DIR, dir, `${sessionId}.jsonl`);
-      if (existsSync(candidate)) return candidate;
-    }
-  } catch {}
-  return null;
-}
-
-/**
- * Find chat by ID, checking DB first then filesystem like in chats.ts
- */
-function findChatForStatus(id: string): any | null {
-  const fileChat = chatFileService.getChat(id);
-  if (fileChat) return fileChat;
-
-  // Try filesystem: id might be a session ID
-  const logPath = findSessionLogPath(id);
-  if (!logPath) return null;
-
-  return {
-    id,
-    session_id: id,
-    session_log_path: logPath,
-  };
-}
 
 /**
  * Generate a chat title from the first user message using OpenRouter,
@@ -245,46 +213,29 @@ streamRouter.post("/:id/message", async (req, res) => {
   } */
   /* #swagger.responses[200] = { description: "SSE stream with message_update, permission_request, message_complete, and message_error events" } */
   /* #swagger.responses[400] = { description: "Missing prompt" } */
-  console.log("[DEBUG] Route hit:", req.method, req.path, JSON.stringify(req.body));
   const { prompt, imageIds, activePlugins } = req.body;
   if (!prompt) return res.status(400).json({ error: "prompt is required" });
-
-  console.log(`[DEBUG] Received message request:`, {
-    prompt: prompt?.substring(0, 100) + "...",
-    imageIds,
-    imageIdsLength: imageIds?.length || 0,
-  });
 
   try {
     // Fetch image data if imageIds are provided
     const imageMetadata: { buffer: Buffer; mimeType: string }[] = [];
     if (imageIds && imageIds.length > 0) {
-      console.log(`[DEBUG] Processing ${imageIds.length} image IDs: ${imageIds}`);
-
       for (const imageId of imageIds) {
         try {
-          console.log(`[DEBUG] Loading image: ${imageId}`);
           const result = ImageStorageService.getImage(imageId);
           if (result) {
-            console.log(`[DEBUG] Successfully loaded image ${imageId}, size: ${result.buffer.length} bytes, mimeType: ${result.image.mimeType}`);
             imageMetadata.push({
               buffer: result.buffer,
               mimeType: result.image.mimeType,
             });
-          } else {
-            console.warn(`[DEBUG] Image not found: ${imageId}`);
           }
         } catch (error) {
           console.error(`Failed to load image ${imageId}:`, error);
         }
       }
 
-      console.log(`[DEBUG] Final imageMetadata count: ${imageMetadata.length}`);
-
       // Store image metadata in chat metadata for this message
       await storeMessageImages(req.params.id, imageIds);
-    } else {
-      console.log(`[DEBUG] No imageIds provided in request`);
     }
 
     const emitter = await sendMessage({

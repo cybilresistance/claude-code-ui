@@ -1,6 +1,24 @@
-import { useState, useEffect, useCallback } from 'react';
-import { GitBranch, ChevronDown, ChevronUp } from 'lucide-react';
-import { getGitBranches, type BranchConfig } from '../api';
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { GitBranch, ChevronDown, ChevronUp } from "lucide-react";
+import { getGitBranches, type BranchConfig } from "../api";
+
+/**
+ * Validate a git branch name according to git-check-ref-format rules.
+ * Returns an error message string, or null if the name is valid.
+ */
+function validateBranchName(name: string): string | null {
+  if (!name) return null; // empty is fine (field is optional)
+  if (/\s/.test(name)) return "Branch name cannot contain spaces";
+  if (/\.\./.test(name)) return 'Branch name cannot contain ".."';
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f~^:?*\\]/.test(name)) return "Branch name contains invalid characters";
+  if (name.startsWith("/") || name.endsWith("/") || name.endsWith(".")) return 'Branch name cannot start/end with "/" or end with "."';
+  if (name.includes("@{")) return 'Branch name cannot contain "@{"';
+  if (name.includes("//")) return "Branch name cannot contain consecutive slashes";
+  if (name.endsWith(".lock")) return 'Branch name cannot end with ".lock"';
+  if (name === "@") return '"@" is not a valid branch name';
+  return null;
+}
 
 interface BranchSelectorProps {
   folder: string;
@@ -14,7 +32,7 @@ export default function BranchSelector({ folder, currentBranch, onChange }: Bran
   const [error, setError] = useState<string | null>(null);
 
   const [baseBranch, setBaseBranch] = useState(currentBranch);
-  const [newBranch, setNewBranch] = useState('');
+  const [newBranch, setNewBranch] = useState("");
   const [useWorktree, setUseWorktree] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -63,60 +81,62 @@ export default function BranchSelector({ folder, currentBranch, onChange }: Bran
     [currentBranch, onChange],
   );
 
-  // Propagate on state changes
+  // Validate new branch name
+  const branchError = useMemo(() => validateBranchName(newBranch.trim()), [newBranch]);
+
+  // Propagate on state changes (skip if branch name is invalid)
   useEffect(() => {
+    if (branchError) return;
     propagateChange(baseBranch, newBranch, useWorktree);
-  }, [baseBranch, newBranch, useWorktree, propagateChange]);
+  }, [baseBranch, newBranch, useWorktree, propagateChange, branchError]);
 
   // Compute worktree path preview
   const effectiveBranch = newBranch.trim() || baseBranch;
-  const sanitized = effectiveBranch.replace(/\//g, '-');
-  const repoName = folder.split('/').pop() || 'repo';
-  const parentDir = folder.split('/').slice(0, -1).join('/');
+  const sanitized = effectiveBranch.replace(/\//g, "-");
+  const repoName = folder.split("/").pop() || "repo";
+  const parentDir = folder.split("/").slice(0, -1).join("/");
   const worktreePath = `${parentDir}/${repoName}.${sanitized}`;
 
   // Determine display label for collapsed state
   const hasChanges = baseBranch !== currentBranch || newBranch.trim() || useWorktree;
-  const displayLabel = newBranch.trim()
-    ? `${newBranch.trim()} (new from ${baseBranch})`
-    : baseBranch;
+  const displayLabel = newBranch.trim() ? `${newBranch.trim()} (new from ${baseBranch})` : baseBranch;
 
   return (
     <div
       style={{
-        background: 'var(--bg-secondary)',
+        background: "var(--bg-secondary)",
         borderRadius: 12,
-        padding: expanded ? '16px 20px' : '10px 16px',
+        padding: expanded ? "16px 20px" : "10px 16px",
         marginBottom: 16,
-        border: hasChanges ? '1px solid var(--accent)' : '1px solid transparent',
-        transition: 'all 0.2s ease',
+        border: hasChanges ? "1px solid var(--accent)" : "1px solid transparent",
+        transition: "all 0.2s ease",
       }}
     >
       {/* Header / collapsed view */}
       <button
         onClick={() => setExpanded(!expanded)}
         style={{
-          display: 'flex',
-          alignItems: 'center',
+          display: "flex",
+          alignItems: "center",
           gap: 8,
-          width: '100%',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
+          width: "100%",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
           padding: 0,
-          color: 'var(--text)',
+          color: "var(--text)",
         }}
       >
-        <GitBranch size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+        <GitBranch size={14} style={{ color: "var(--accent)", flexShrink: 0 }} />
         <span
           style={{
             fontSize: 13,
             fontWeight: 500,
             flex: 1,
-            textAlign: 'left',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            textAlign: "left",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}
         >
           {displayLabel}
@@ -125,9 +145,9 @@ export default function BranchSelector({ folder, currentBranch, onChange }: Bran
           <span
             style={{
               fontSize: 10,
-              color: '#fff',
-              background: 'var(--accent)',
-              padding: '2px 6px',
+              color: "#fff",
+              background: "var(--accent)",
+              padding: "2px 6px",
               borderRadius: 4,
               fontWeight: 500,
               flexShrink: 0,
@@ -136,14 +156,14 @@ export default function BranchSelector({ folder, currentBranch, onChange }: Bran
             worktree
           </span>
         )}
-        <span style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>
+        <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>
           {expanded ? (
             <>
-              Hide <ChevronUp size={12} style={{ verticalAlign: 'middle' }} />
+              Hide <ChevronUp size={12} style={{ verticalAlign: "middle" }} />
             </>
           ) : (
             <>
-              Configure <ChevronDown size={12} style={{ verticalAlign: 'middle' }} />
+              Configure <ChevronDown size={12} style={{ verticalAlign: "middle" }} />
             </>
           )}
         </span>
@@ -151,14 +171,14 @@ export default function BranchSelector({ folder, currentBranch, onChange }: Bran
 
       {/* Expanded controls */}
       {expanded && (
-        <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
           {/* Base Branch */}
           <div>
             <label
               style={{
-                display: 'block',
+                display: "block",
                 fontSize: 12,
-                color: 'var(--text-muted)',
+                color: "var(--text-muted)",
                 marginBottom: 4,
                 fontWeight: 500,
               }}
@@ -166,30 +186,30 @@ export default function BranchSelector({ folder, currentBranch, onChange }: Bran
               Base Branch
             </label>
             {loading ? (
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading branches...</span>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Loading branches...</span>
             ) : error ? (
-              <span style={{ fontSize: 12, color: 'var(--danger, #ef4444)' }}>{error}</span>
+              <span style={{ fontSize: 12, color: "var(--danger, #ef4444)" }}>{error}</span>
             ) : (
               <select
                 value={baseBranch}
                 onChange={(e) => setBaseBranch(e.target.value)}
                 style={{
-                  width: '100%',
-                  background: 'var(--bg)',
-                  color: 'var(--text)',
-                  border: '1px solid var(--border)',
+                  width: "100%",
+                  background: "var(--bg)",
+                  color: "var(--text)",
+                  border: "1px solid var(--border)",
                   borderRadius: 6,
-                  padding: '6px 10px',
+                  padding: "6px 10px",
                   fontSize: 13,
-                  fontFamily: 'monospace',
-                  cursor: 'pointer',
-                  outline: 'none',
+                  fontFamily: "monospace",
+                  cursor: "pointer",
+                  outline: "none",
                 }}
               >
                 {branches.map((branch) => (
                   <option key={branch} value={branch}>
                     {branch}
-                    {branch === currentBranch ? ' (current)' : ''}
+                    {branch === currentBranch ? " (current)" : ""}
                   </option>
                 ))}
               </select>
@@ -200,15 +220,14 @@ export default function BranchSelector({ folder, currentBranch, onChange }: Bran
           <div>
             <label
               style={{
-                display: 'block',
+                display: "block",
                 fontSize: 12,
-                color: 'var(--text-muted)',
+                color: "var(--text-muted)",
                 marginBottom: 4,
                 fontWeight: 500,
               }}
             >
-              New Branch{' '}
-              <span style={{ fontWeight: 400, opacity: 0.7 }}>(optional — extends base)</span>
+              New Branch <span style={{ fontWeight: 400, opacity: 0.7 }}>(optional — extends base)</span>
             </label>
             <input
               type="text"
@@ -216,38 +235,45 @@ export default function BranchSelector({ folder, currentBranch, onChange }: Bran
               onChange={(e) => setNewBranch(e.target.value)}
               placeholder="e.g. feature/my-feature"
               style={{
-                width: '100%',
-                background: 'var(--bg)',
-                color: 'var(--text)',
-                border: '1px solid var(--border)',
+                width: "100%",
+                background: "var(--bg)",
+                color: "var(--text)",
+                border: branchError ? "1px solid var(--danger, #ef4444)" : "1px solid var(--border)",
                 borderRadius: 6,
-                padding: '6px 10px',
+                padding: "6px 10px",
                 fontSize: 13,
-                fontFamily: 'monospace',
-                outline: 'none',
-                boxSizing: 'border-box',
+                fontFamily: "monospace",
+                outline: "none",
+                boxSizing: "border-box",
               }}
             />
+            {branchError && (
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 11,
+                  color: "var(--danger, #ef4444)",
+                  fontWeight: 500,
+                }}
+              >
+                {branchError}
+              </div>
+            )}
           </div>
 
           {/* Use Worktree */}
           <div>
             <label
               style={{
-                display: 'flex',
-                alignItems: 'center',
+                display: "flex",
+                alignItems: "center",
                 gap: 8,
-                cursor: 'pointer',
+                cursor: "pointer",
                 fontSize: 13,
-                color: 'var(--text)',
+                color: "var(--text)",
               }}
             >
-              <input
-                type="checkbox"
-                checked={useWorktree}
-                onChange={(e) => setUseWorktree(e.target.checked)}
-                style={{ cursor: 'pointer' }}
-              />
+              <input type="checkbox" checked={useWorktree} onChange={(e) => setUseWorktree(e.target.checked)} style={{ cursor: "pointer" }} />
               Use Worktree
             </label>
             {useWorktree && (
@@ -255,9 +281,9 @@ export default function BranchSelector({ folder, currentBranch, onChange }: Bran
                 style={{
                   marginTop: 6,
                   fontSize: 11,
-                  color: 'var(--text-muted)',
-                  fontFamily: 'monospace',
-                  wordBreak: 'break-all',
+                  color: "var(--text-muted)",
+                  fontFamily: "monospace",
+                  wordBreak: "break-all",
                   paddingLeft: 24,
                 }}
               >

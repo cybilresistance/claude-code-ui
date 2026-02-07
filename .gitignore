@@ -13,3 +13,5 @@ data/
 logs/
 **/logs/
 backend/swagger.json
+shared/types/*.js
+shared/types/*.d.ts

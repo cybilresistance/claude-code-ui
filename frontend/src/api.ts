@@ -1,60 +1,38 @@
+import type {
+  SlashCommand,
+  PluginCommand,
+  PluginManifest,
+  Plugin,
+  Chat,
+  ParsedMessage,
+  ChatListResponse,
+  PermissionLevel,
+  DefaultPermissions,
+  StoredImage,
+  ImageUploadResult,
+  QueueItem,
+  SessionStatus,
+  BranchConfig,
+} from "shared/types/index.js";
+
+export type {
+  SlashCommand,
+  PluginCommand,
+  PluginManifest,
+  Plugin,
+  Chat,
+  ParsedMessage,
+  ChatListResponse,
+  PermissionLevel,
+  DefaultPermissions,
+  StoredImage,
+  ImageUploadResult,
+  QueueItem,
+  SessionStatus,
+  BranchConfig,
+};
+
 const BASE = "/api";
-
-export interface SlashCommand {
-  name: string;
-  description?: string;
-  source?: string;
-}
-
-export interface PluginCommand {
-  name: string;
-  description?: string;
-}
-
-export interface PluginManifest {
-  name: string;
-  description: string;
-  source: string;
-  [key: string]: any;
-}
-
-export interface Plugin {
-  id: string;
-  path: string;
-  manifest: PluginManifest;
-  commands: PluginCommand[];
-}
-
-export interface Chat {
-  id: string;
-  folder: string;
-  session_id: string | null;
-  session_log_path: string | null;
-  metadata: string;
-  created_at: string;
-  updated_at: string;
-  is_git_repo?: boolean;
-  git_branch?: string;
-  slash_commands?: SlashCommand[];
-  plugins?: Plugin[];
-}
-
-export interface ParsedMessage {
-  role: "user" | "assistant";
-  type: "text" | "thinking" | "tool_use" | "tool_result";
-  content: string;
-  toolName?: string;
-  toolUseId?: string;
-  isBuiltInCommand?: boolean;
-  timestamp?: string;
-  teamName?: string;
-}
-
-export interface ChatListResponse {
-  chats: Chat[];
-  hasMore: boolean;
-  total: number;
-}
 
 export async function listChats(limit?: number, offset?: number): Promise<ChatListResponse> {
   const params = new URLSearchParams();
@@ -63,15 +41,6 @@ export async function listChats(limit?: number, offset?: number): Promise<ChatLi
 
   const res = await fetch(`${BASE}/chats${params.toString() ? `?${params}` : ""}`);
   return res.json();
-}
-
-export type PermissionLevel = "allow" | "ask" | "deny";
-
-export interface DefaultPermissions {
-  fileRead: PermissionLevel;
-  fileWrite: PermissionLevel;
-  codeExecution: PermissionLevel;
-  webAccess: PermissionLevel;
 }
 
 export interface NewChatInfo {
@@ -128,32 +97,9 @@ export async function respondToChat(
   return res.json();
 }
 
-export interface SessionStatus {
-  active: boolean;
-  type: "web" | "cli" | "inactive" | "none";
-  hasPending?: boolean;
-  lastActivity?: string;
-  fileSize?: number;
-}
-
 export async function getSessionStatus(id: string): Promise<SessionStatus> {
   const res = await fetch(`${BASE}/chats/${id}/status`, { credentials: "include" });
   return res.json();
-}
-
-export interface StoredImage {
-  id: string;
-  filename: string;
-  originalName: string;
-  mimeType: string;
-  size: number;
-  uploadedAt: string;
-}
-
-export interface ImageUploadResult {
-  success: boolean;
-  images: StoredImage[];
-  errors?: string[];
 }
 
 export async function uploadImages(chatId: string, images: File[]): Promise<ImageUploadResult> {
@@ -171,20 +117,6 @@ export async function uploadImages(chatId: string, images: File[]): Promise<Imag
 }
 
 // Queue API functions
-export interface QueueItem {
-  id: string;
-  chat_id: string | null;
-  user_message: string;
-  scheduled_time: string;
-  status: "draft" | "pending" | "running" | "completed" | "failed";
-  created_at: string;
-  retry_count: number;
-  error_message: string | null;
-  // New chat fields - only used when chat_id is null
-  folder?: string;
-  defaultPermissions?: DefaultPermissions;
-}
-
 export async function getQueueItems(status?: string, chatId?: string): Promise<QueueItem[]> {
   const params = new URLSearchParams();
   if (status) params.append("status", status);
@@ -257,13 +189,6 @@ export async function getSlashCommandsAndPlugins(chatId: string): Promise<{ slas
 }
 
 // Branch / worktree configuration
-
-export interface BranchConfig {
-  baseBranch?: string;
-  newBranch?: string;
-  useWorktree?: boolean;
-}
-
 export async function getGitBranches(folder: string): Promise<{ branches: string[] }> {
   const res = await fetch(`${BASE}/git/branches?folder=${encodeURIComponent(folder)}`);
   if (!res.ok) {

@@ -1,28 +1,16 @@
 import { readFileSync, writeFileSync, readdirSync, unlinkSync, existsSync, mkdirSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { v4 as uuid } from "uuid";
+import type { QueueItem, DefaultPermissions } from "shared/types/index.js";
+import { DATA_DIR } from "../utils/paths.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const queueDir = join(__dirname, "..", "..", "data", "queue");
+export type { QueueItem };
+
+const queueDir = join(DATA_DIR, "queue");
 
 // Ensure queue directory exists
 if (!existsSync(queueDir)) {
   mkdirSync(queueDir, { recursive: true });
-}
-
-export interface QueueItem {
-  id: string;
-  chat_id: string | null;
-  user_message: string;
-  scheduled_time: string;
-  status: "draft" | "pending" | "running" | "completed" | "failed";
-  created_at: string;
-  retry_count: number;
-  error_message: string | null;
-  // New chat fields - only used when chat_id is null
-  folder?: string;
-  defaultPermissions?: any;
 }
 
 export class QueueFileService {
@@ -78,7 +66,7 @@ export class QueueFileService {
     userMessage: string,
     scheduledTime: string,
     folder?: string,
-    defaultPermissions?: any,
+    defaultPermissions?: DefaultPermissions,
     isDraft: boolean = false,
   ): QueueItem {
     const id = uuid();

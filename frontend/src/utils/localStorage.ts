@@ -1,4 +1,5 @@
 import type { DefaultPermissions } from "../api";
+import { migratePermissions } from "shared/types/index.js";
 
 const STORAGE_KEYS = {
   SETTINGS: "claude-code-settings",
@@ -21,32 +22,6 @@ const DEFAULT_PERMISSIONS: DefaultPermissions = {
   webAccess: "ask",
 };
 
-/**
- * Migrate old 3-category permissions to new 4-category format.
- * If old format detected (has fileOperations), convert:
- *   fileOperations -> fileRead + fileWrite
- *   codeExecution, webAccess -> pass through unchanged
- */
-function migratePermissions(permissions: any): DefaultPermissions {
-  // Already new format
-  if (permissions.fileRead !== undefined && permissions.fileWrite !== undefined) {
-    return permissions as DefaultPermissions;
-  }
-
-  // Old format: { fileOperations, codeExecution, webAccess }
-  if (permissions.fileOperations !== undefined) {
-    return {
-      fileRead: permissions.fileOperations,
-      fileWrite: permissions.fileOperations,
-      codeExecution: permissions.codeExecution || "ask",
-      webAccess: permissions.webAccess || "ask",
-    };
-  }
-
-  // Unknown format, return defaults
-  return DEFAULT_PERMISSIONS;
-}
-
 function getStorageData(): LocalStorageData {
   try {
     const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS);
@@ -67,7 +42,7 @@ function setStorageData(data: LocalStorageData): void {
 export function getDefaultPermissions(): DefaultPermissions {
   const data = getStorageData();
   if (data.defaultPermissions) {
-    return migratePermissions(data.defaultPermissions);
+    return migratePermissions(data.defaultPermissions) ?? DEFAULT_PERMISSIONS;
   }
   return DEFAULT_PERMISSIONS;
 }

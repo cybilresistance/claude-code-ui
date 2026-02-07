@@ -3,7 +3,7 @@
 import { spawn } from "child_process";
 
 const PROCESS_NAME = "claude-code-ui";
-const SCRIPT_PATH = "backend/dist/index.js";
+const SCRIPT_PATH = "backend/dist/backend/src/index.js";
 
 function runCommand(cmd, args) {
   return new Promise((resolve) => {

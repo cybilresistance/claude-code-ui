@@ -6,27 +6,15 @@ import { chatFileService } from "../services/chat-file-service.js";
 import { getCommandsAndPluginsForDirectory, getAllCommandsForDirectory } from "../services/slashCommands.js";
 import { getGitInfo } from "../utils/git.js";
 import { CLAUDE_PROJECTS_DIR, projectDirToFolder } from "../utils/paths.js";
+import { findSessionLogPath } from "../utils/session-log.js";
+import { findChat } from "../utils/chat-lookup.js";
+import type { ParsedMessage } from "shared/types/index.js";
 
 export const chatsRouter = Router();
 
 // Cache for git info to avoid repeated expensive operations
 const gitInfoCache = new Map<string, { isGitRepo: boolean; branch?: string; cachedAt: number }>();
 const GIT_CACHE_TTL = 300000; // 5 minutes
-
-/**
- * Find the session JSONL file in ~/.claude/projects/.
- * The SDK names project dirs by replacing / with - in the cwd.
- * We search all project dirs for the session ID since the SDK may
- * resolve the cwd differently than what we passed.
- */
-function findSessionLogPath(sessionId: string): string | null {
-  if (!existsSync(CLAUDE_PROJECTS_DIR)) return null;
-  for (const dir of readdirSync(CLAUDE_PROJECTS_DIR)) {
-    const candidate = join(CLAUDE_PROJECTS_DIR, dir, `${sessionId}.jsonl`);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
 
 /**
  * Get cached git info or fetch and cache it
@@ -406,65 +394,6 @@ chatsRouter.delete("/:id", (req, res) => {
   }
 });
 
-/**
- * Look up a chat by ID, checking the file storage first then falling back to filesystem.
- * Returns null if chat not found in either location. Does not throw errors.
- */
-function findChat(id: string): any | null {
-  try {
-    // Try file storage first
-    let fileChat = null;
-    try {
-      fileChat = chatFileService.getChat(id);
-    } catch (err) {
-      console.error("Error reading chat from file storage:", err);
-    }
-
-    if (fileChat) {
-      const logPath = findSessionLogPath(fileChat.session_id);
-      let gitInfo: { isGitRepo: boolean; branch?: string } = { isGitRepo: false };
-      try {
-        gitInfo = getGitInfo(fileChat.folder);
-      } catch {}
-      return {
-        ...fileChat,
-        session_log_path: logPath,
-        is_git_repo: gitInfo.isGitRepo,
-        git_branch: gitInfo.branch,
-      };
-    }
-
-    // Try filesystem fallback: id might be a session ID with no file storage
-    const logPath = findSessionLogPath(id);
-    if (!logPath) return null;
-
-    const projectDir = join(logPath, "..");
-    const dirName = projectDir.split("/").pop()!;
-    const st = statSync(logPath);
-    const folder = projectDirToFolder(dirName);
-    let gitInfo: { isGitRepo: boolean; branch?: string } = { isGitRepo: false };
-    try {
-      gitInfo = getGitInfo(folder);
-    } catch {}
-
-    return {
-      id,
-      folder,
-      session_id: id,
-      session_log_path: logPath,
-      metadata: JSON.stringify({ session_ids: [id] }),
-      created_at: st.birthtime.toISOString(),
-      updated_at: st.mtime.toISOString(),
-      is_git_repo: gitInfo.isGitRepo,
-      git_branch: gitInfo.branch,
-      _from_filesystem: true,
-    };
-  } catch (err) {
-    console.error("Error finding chat:", err);
-    return null;
-  }
-}
-
 // Get a single chat
 chatsRouter.get("/:id", (req, res) => {
   // #swagger.tags = ['Chats']
@@ -577,16 +506,6 @@ chatsRouter.get("/:id/slash-commands", (req, res) => {
     res.json({ slashCommands: [], plugins: [], allCommands: [] });
   }
 });
-
-interface ParsedMessage {
-  role: "user" | "assistant";
-  type: "text" | "thinking" | "tool_use" | "tool_result";
-  content: string;
-  toolName?: string;
-  toolUseId?: string;
-  timestamp?: string;
-  teamName?: string;
-}
 
 function extractToolResultContent(block: any): string {
   if (typeof block.content === "string") return block.content;

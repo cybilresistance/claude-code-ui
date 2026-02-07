@@ -555,7 +555,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
             try {
               const uploadResult = await uploadImages(id, images);
               if (uploadResult.success) {
-                imageIds = uploadResult.images.map((img) => img.id);
+                imageIds = (uploadResult.images ?? []).map((img) => img.id);
               } else {
                 console.error("Image upload failed:", uploadResult.errors);
               }

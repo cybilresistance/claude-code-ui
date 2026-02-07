@@ -1,24 +1,8 @@
-import { readFileSync, existsSync, readdirSync } from 'fs';
-import { join, dirname, resolve } from 'path';
+import { readFileSync, existsSync, readdirSync } from "fs";
+import { join, dirname, resolve } from "path";
+import type { PluginCommand, PluginManifest, Plugin } from "shared/types/index.js";
 
-export interface PluginCommand {
-  name: string;
-  description?: string;
-}
-
-export interface PluginManifest {
-  name: string;
-  description: string;
-  source: string;
-  [key: string]: any;
-}
-
-export interface Plugin {
-  id: string;
-  path: string;
-  manifest: PluginManifest;
-  commands: PluginCommand[];
-}
+export type { PluginCommand, PluginManifest, Plugin };
 
 /**
  * Scan a plugin source directory for commands in the commands/ folder
@@ -26,34 +10,32 @@ export interface Plugin {
 function discoverPluginCommands(pluginSourcePath: string, marketplaceDir: string): PluginCommand[] {
   try {
     const absoluteSourcePath = resolve(marketplaceDir, pluginSourcePath);
-    const commandsPath = join(absoluteSourcePath, 'commands');
+    const commandsPath = join(absoluteSourcePath, "commands");
 
     if (!existsSync(commandsPath)) {
       return [];
     }
 
-    const commandFiles = readdirSync(commandsPath).filter(file => file.endsWith('.md'));
+    const commandFiles = readdirSync(commandsPath).filter((file) => file.endsWith(".md"));
 
-    return commandFiles.map(file => {
-      const commandName = file.replace(/\.md$/, '');
+    return commandFiles.map((file) => {
+      const commandName = file.replace(/\.md$/, "");
 
       // Try to extract description from the first line of the .md file
-      let description = '';
+      let description = "";
       try {
         const commandFilePath = join(commandsPath, file);
-        const content = readFileSync(commandFilePath, 'utf-8');
-        const firstLine = content.split('\n')[0];
+        const content = readFileSync(commandFilePath, "utf-8");
+        const firstLine = content.split("\n")[0];
         // Extract title from markdown header (# Title) or use file name
-        description = firstLine.startsWith('#')
-          ? firstLine.replace(/^#+\s*/, '').trim()
-          : `${commandName} command`;
+        description = firstLine.startsWith("#") ? firstLine.replace(/^#+\s*/, "").trim() : `${commandName} command`;
       } catch {
         description = `${commandName} command`;
       }
 
       return {
         name: commandName,
-        description
+        description,
       };
     });
   } catch (error) {
@@ -66,14 +48,14 @@ function discoverPluginCommands(pluginSourcePath: string, marketplaceDir: string
  * Discover all plugins from .claude-plugin/marketplace.json
  */
 export function discoverPlugins(directory: string): Plugin[] {
-  const marketplacePath = join(directory, '.claude-plugin', 'marketplace.json');
+  const marketplacePath = join(directory, ".claude-plugin", "marketplace.json");
 
   if (!existsSync(marketplacePath)) {
     return [];
   }
 
   try {
-    const data = readFileSync(marketplacePath, 'utf-8');
+    const data = readFileSync(marketplacePath, "utf-8");
     const marketplace = JSON.parse(data);
 
     if (!Array.isArray(marketplace.plugins)) {
@@ -91,7 +73,7 @@ export function discoverPlugins(directory: string): Plugin[] {
           id: p.name,
           path: marketplacePath,
           manifest: p,
-          commands
+          commands,
         };
       });
   } catch (error) {
@@ -111,5 +93,5 @@ export function getPluginsForDirectory(directory: string): Plugin[] {
  * Convert plugin commands to slash command format
  */
 export function pluginToSlashCommands(plugin: Plugin): string[] {
-  return plugin.commands.map(command => `${plugin.manifest.name}:${command.name}`);
+  return plugin.commands.map((command) => `${plugin.manifest.name}:${command.name}`);
 }

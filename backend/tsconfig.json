@@ -4,14 +4,17 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": "..",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "declaration": true,
-    "baseUrl": ".."
+    "baseUrl": "..",
+    "paths": {
+      "shared/*": ["shared/*"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "../shared/types"]
 }

@@ -1,10 +1,8 @@
 import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
+import { DATA_DIR } from "../utils/paths.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const dataDir = join(__dirname, "..", "..", "..", "data");
-const sessionsFilePath = join(dataDir, "sessions.json");
+const sessionsFilePath = join(DATA_DIR, "sessions.json");
 
 interface SessionData {
   expires_at: number;
@@ -21,7 +19,7 @@ interface SessionsFile {
 }
 
 // Ensure data directory exists
-mkdirSync(dataDir, { recursive: true });
+mkdirSync(DATA_DIR, { recursive: true });
 
 let sessionsCache: SessionsFile | null = null;
 let lastModified = 0;

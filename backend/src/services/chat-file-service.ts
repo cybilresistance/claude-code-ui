@@ -1,24 +1,16 @@
 import { readFileSync, writeFileSync, readdirSync, unlinkSync, existsSync, mkdirSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { v4 as uuid } from "uuid";
+import type { Chat } from "shared/types/index.js";
+import { DATA_DIR } from "../utils/paths.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const chatsDir = join(__dirname, "..", "..", "data", "chats");
+export type { Chat };
+
+const chatsDir = join(DATA_DIR, "chats");
 
 // Ensure chats directory exists
 if (!existsSync(chatsDir)) {
   mkdirSync(chatsDir, { recursive: true });
-}
-
-export interface Chat {
-  id: string;
-  folder: string;
-  session_id: string;
-  session_log_path: string | null;
-  metadata: string;
-  created_at: string;
-  updated_at: string;
 }
 
 export class ChatFileService {
