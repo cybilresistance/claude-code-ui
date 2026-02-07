@@ -519,8 +519,23 @@ function parseMessages(rawMessages: any[]): ParsedMessage[] {
   const result: ParsedMessage[] = [];
 
   for (const msg of rawMessages) {
-    // Skip summary/metadata lines
+    // Skip internal metadata lines
     if (msg.type === "summary" || msg.type === "queue-operation") continue;
+
+    // Emit system messages (e.g. compact_boundary) as visible markers
+    if (msg.type === "system" && msg.subtype === "compact_boundary") {
+      result.push({
+        role: "system",
+        type: "system",
+        content: msg.content || "Conversation compacted",
+        subtype: "compact_boundary",
+        timestamp: msg.timestamp,
+      });
+      continue;
+    }
+
+    // Skip other system messages (e.g. turn_duration) that aren't user-facing
+    if (msg.type === "system") continue;
 
     const role: "user" | "assistant" = msg.message?.role || msg.type;
     const content = msg.message?.content || msg.content;

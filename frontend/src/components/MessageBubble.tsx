@@ -225,6 +225,34 @@ export default function MessageBubble({ message, teamColorMap }: Props) {
     return <TodoList items={todoItems} />;
   }
 
+  if (message.type === "system") {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          margin: "12px 0",
+          padding: "0 8px",
+        }}
+      >
+        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--text-muted)",
+            fontStyle: "italic",
+            whiteSpace: "nowrap",
+            userSelect: "none",
+          }}
+        >
+          {message.content}
+        </div>
+        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+      </div>
+    );
+  }
+
   if (message.type === "thinking") {
     return (
       <div style={{ margin: "4px 0" }}>

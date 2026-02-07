@@ -76,6 +76,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
   const [showSlashCommandsModal, setShowSlashCommandsModal] = useState(false);
   const [promptInputSetValue, setPromptInputSetValue] = useState<((value: string) => void) | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [compacting, setCompacting] = useState(false);
   const [branchConfig, setBranchConfig] = useState<BranchConfig>({});
   const [viewMode, setViewMode] = useState<"chat" | "diff">("chat");
   const abortRef = useRef<AbortController | null>(null);
@@ -206,6 +207,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
 
               if (event.type === "message_complete") {
                 if (currentIdRef.current !== streamChatId) return;
+                setCompacting(false);
 
                 // Check if the conversation ended right after a plan approval.
                 // The SDK may end the conversation turn after ExitPlanMode is processed,
@@ -246,6 +248,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
               if (event.type === "message_error") {
                 if (currentIdRef.current !== streamChatId) return;
                 planApprovedRef.current = false;
+                setCompacting(false);
                 setStreaming(false);
                 setInFlightMessage(null);
                 // Refetch messages to show any partial content, then add error
@@ -257,8 +260,20 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
                 return;
               }
 
+              if (event.type === "compacting") {
+                if (currentIdRef.current !== streamChatId) return;
+                setCompacting(true);
+                // Refetch messages to pick up the compact_boundary system message
+                getMessages(streamChatId!).then((msgs) => {
+                  if (currentIdRef.current !== streamChatId) return;
+                  setMessages(Array.isArray(msgs) ? msgs : []);
+                });
+                continue;
+              }
+
               if (event.type === "message_update") {
                 if (currentIdRef.current !== streamChatId) return;
+                setCompacting(false);
                 // If we get message_update events after plan approval, it means
                 // the SDK continued on its own — clear the auto-continue flag
                 if (planApprovedRef.current) {
@@ -1150,8 +1165,10 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
                 )}
                 {streaming && (
                   <div style={{ color: "var(--text-muted)", fontSize: 13, padding: "8px 0", display: "flex", alignItems: "center", gap: 8 }}>
-                    <div>Claude is working...</div>
-                    <div style={{ fontSize: 11, opacity: 0.7 }}>(You can send another message anytime)</div>
+                    <div>{compacting ? "Compacting conversation..." : "Claude is working..."}</div>
+                    <div style={{ fontSize: 11, opacity: 0.7 }}>
+                      {compacting ? "(Summarizing context to free up space)" : "(You can send another message anytime)"}
+                    </div>
                   </div>
                 )}
                 <div ref={bottomRef} />

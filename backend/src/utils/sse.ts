@@ -29,10 +29,7 @@ export function sendSSE(res: Response, data: Record<string, unknown>): void {
  *
  * Returns the handler function so the caller can attach/detach it from an emitter.
  */
-export function createSSEHandler(
-  res: Response,
-  emitter: EventEmitter,
-): (event: StreamEvent) => void {
+export function createSSEHandler(res: Response, emitter: EventEmitter): (event: StreamEvent) => void {
   const onEvent = (event: StreamEvent) => {
     if (event.type === "done") {
       sendSSE(res, { type: "message_complete" });
@@ -44,6 +41,8 @@ export function createSSEHandler(
       res.end();
     } else if (event.type === "permission_request" || event.type === "user_question" || event.type === "plan_review") {
       sendSSE(res, event as unknown as Record<string, unknown>);
+    } else if (event.type === "compacting") {
+      sendSSE(res, { type: "compacting" });
     } else {
       sendSSE(res, { type: "message_update" });
     }

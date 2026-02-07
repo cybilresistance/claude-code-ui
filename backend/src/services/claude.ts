@@ -434,6 +434,11 @@ export async function sendMessage(opts: SendMessageOptions): Promise<EventEmitte
           }
         }
 
+        // Detect conversation compaction events from the SDK
+        if ("type" in message && (message as any).type === "system" && (message as any).subtype === "compact_boundary") {
+          emitter.emit("event", { type: "compacting", content: (message as any).content || "Conversation compacted" } as StreamEvent);
+        }
+
         emitContentBlocks(emitter, message);
       }
 

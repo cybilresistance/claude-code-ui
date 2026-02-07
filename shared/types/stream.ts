@@ -9,10 +9,11 @@ export interface StreamEvent {
     | "permission_request"
     | "user_question"
     | "plan_review"
-    | "chat_created";
+    | "chat_created"
+    | "compacting";
   content: string;
   toolName?: string;
-   
+
   input?: Record<string, unknown>;
   questions?: unknown[];
   suggestions?: unknown[];

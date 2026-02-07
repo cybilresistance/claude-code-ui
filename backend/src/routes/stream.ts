@@ -150,6 +150,8 @@ streamRouter.post("/new/message", async (req, res) => {
         res.end();
       } else if (event.type === "permission_request" || event.type === "user_question" || event.type === "plan_review") {
         sendSSE(res, event as unknown as Record<string, unknown>);
+      } else if (event.type === "compacting") {
+        sendSSE(res, { type: "compacting" });
       } else {
         sendSSE(res, { type: "message_update" });
       }
@@ -284,6 +286,10 @@ streamRouter.get("/:id/stream", (req, res) => {
             const parsed = JSON.parse(line);
             if (parsed.message?.content) {
               sendSSE(res, { type: "message_update" });
+            }
+            // Detect conversation compaction (context window auto-summary)
+            if (parsed.type === "system" && parsed.subtype === "compact_boundary") {
+              sendSSE(res, { type: "compacting" });
             }
             if (parsed.type === "summary" || parsed.message?.stop_reason) {
               sendSSE(res, { type: "message_complete" });
