@@ -51,7 +51,7 @@ Ordered by dependency, risk level, and impact. Complete top-to-bottom.
 
 ### 2.1 Fix Unreachable Route
 
-- [ ] Move `GET /upcoming/next-hour` route (line 232) **above** `GET /:id` (line 88) in `backend/src/routes/queue.ts`
+- [x] ~~Move `GET /upcoming/next-hour` route (line 232) **above** `GET /:id` (line 88) in `backend/src/routes/queue.ts`~~ (FIXED -- deleted route and unused `getUpcomingMessages()` entirely; both were dead code with no callers)
 
 ### 2.2 Fix Command Injection Vulnerability (CRITICAL)
 
@@ -235,7 +235,7 @@ Ordered by dependency, risk level, and impact. Complete top-to-bottom.
 - [ ] Add in-memory cache with TTL to `ChatFileService.getAllChats()` (invalidate on write)
 - [ ] Replace `readdirSync` + `find()` in `image-storage.ts:getImage()` with a lookup map
 - [ ] Replace synchronous file I/O in `slashCommands.ts` with async equivalents
-- [ ] Replace self-HTTP calls in `queue-processor.ts` and `queue.ts:180-212` with direct service function calls
+- [x] ~~Replace self-HTTP calls in `queue-processor.ts` and `queue.ts:180-212` with direct service function calls~~ (FIXED -- both now call `sendMessage()` directly)
 - [ ] Replace `execSync` in `utils/git.ts` with async `execFile`
 - [ ] Replace `statSync` per-file calls in `folder-service.ts:browseDirectory()` and `getRecentFolders()` with async alternatives
 
@@ -258,7 +258,7 @@ Ordered by dependency, risk level, and impact. Complete top-to-bottom.
 - [ ] Restrict CORS `origin` to specific allowed domain(s) in production (currently `origin: true`) ⏳ **REVIEW LATER** -- mitigated by authentication requirement
 - [ ] Add path allowlist to folder browsing service (currently unrestricted filesystem access) ⏳ **REVIEW LATER** -- mitigated by authentication requirement
 - [x] ~~Add path allowlist to git operations in `routes/git.ts` (NEW -- same unrestricted access problem)~~ (FIXED -- `validateFolderPath()` resolves paths and validates existence)
-- [ ] Fix queue processor auth bypass (has existing TODO)
+- [x] ~~Fix queue processor auth bypass (has existing TODO)~~ (FIXED -- queue processor and execute-now route now call `sendMessage()` directly instead of HTTP, eliminating the auth bypass entirely)
 
 ### 9.2 Important
 

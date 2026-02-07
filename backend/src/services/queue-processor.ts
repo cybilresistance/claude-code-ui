@@ -1,4 +1,5 @@
-import { queueFileService } from './queue-file-service.js';
+import { queueFileService, type QueueItem } from "./queue-file-service.js";
+import { sendMessage, type StreamEvent } from "./claude.js";
 
 export class QueueProcessor {
   private intervalId: NodeJS.Timeout | null = null;
@@ -8,7 +9,7 @@ export class QueueProcessor {
   start() {
     if (this.intervalId) return;
 
-    console.log('Starting queue processor...');
+    console.log("Starting queue processor...");
     this.intervalId = setInterval(() => {
       this.processQueue().catch(console.error);
     }, this.checkInterval);
@@ -21,7 +22,7 @@ export class QueueProcessor {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
-      console.log('Queue processor stopped');
+      console.log("Queue processor stopped");
     }
   }
 
@@ -30,7 +31,7 @@ export class QueueProcessor {
     this.isProcessing = true;
 
     try {
-      const dueMessages = this.getDueMessages();
+      const dueMessages = queueFileService.getDueMessages(10);
 
       for (const message of dueMessages) {
         await this.executeMessage(message);
@@ -40,34 +41,41 @@ export class QueueProcessor {
     }
   }
 
-  private getDueMessages(): any[] {
-    return queueFileService.getDueMessages(10);
-  }
-
-  private async executeMessage(queueItem: any): Promise<void> {
-    const { id, chat_id, user_message } = queueItem;
+  private async executeMessage(queueItem: QueueItem): Promise<void> {
+    const { id, chat_id, user_message, folder, defaultPermissions } = queueItem;
 
     try {
       // Update status to running
-      queueFileService.updateQueueItem(id, { status: 'running' });
+      queueFileService.updateQueueItem(id, { status: "running" });
 
-      // Execute the message
-      const response = await fetch(`http://localhost:${process.env.PORT || 8000}/api/chats/${chat_id}/message`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // TODO: Add proper authentication for internal requests
-        },
-        body: JSON.stringify({ prompt: user_message })
+      // Call the service layer directly instead of making HTTP requests
+      const emitter = await sendMessage(
+        chat_id
+          ? { chatId: chat_id, prompt: user_message }
+          : {
+              folder: folder!,
+              prompt: user_message,
+              defaultPermissions,
+            },
+      );
+
+      // Wait for the session to complete or error
+      await new Promise<void>((resolve, reject) => {
+        const onEvent = (event: StreamEvent) => {
+          if (event.type === "done") {
+            emitter.removeListener("event", onEvent);
+            resolve();
+          } else if (event.type === "error") {
+            emitter.removeListener("event", onEvent);
+            reject(new Error(event.content || "Unknown stream error"));
+          }
+        };
+        emitter.on("event", onEvent);
       });
 
-      if (response.ok) {
-        // Delete the queue item when completed successfully
-        queueFileService.deleteQueueItem(id);
-        console.log(`Queue item ${id} executed successfully and removed from queue`);
-      } else {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      // Delete the queue item when completed successfully
+      queueFileService.deleteQueueItem(id);
+      console.log(`Queue item ${id} executed successfully and removed from queue`);
     } catch (error: any) {
       console.error(`Failed to execute queue item ${id}:`, error.message);
 
@@ -77,9 +85,9 @@ export class QueueProcessor {
 
       if (retryCount >= maxRetries) {
         queueFileService.updateQueueItem(id, {
-          status: 'failed',
+          status: "failed",
           error_message: error.message,
-          retry_count: retryCount
+          retry_count: retryCount,
         });
         console.log(`Queue item ${id} failed after ${maxRetries} attempts`);
       } else {
@@ -88,10 +96,10 @@ export class QueueProcessor {
         const retryTime = new Date(Date.now() + retryDelay).toISOString();
 
         queueFileService.updateQueueItem(id, {
-          status: 'pending',
+          status: "pending",
           error_message: error.message,
           retry_count: retryCount,
-          scheduled_time: retryTime
+          scheduled_time: retryTime,
         });
         console.log(`Queue item ${id} scheduled for retry in ${retryDelay / 60000} minutes`);
       }

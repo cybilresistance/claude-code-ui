@@ -1,10 +1,10 @@
-import { readFileSync, writeFileSync, readdirSync, unlinkSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { v4 as uuid } from 'uuid';
+import { readFileSync, writeFileSync, readdirSync, unlinkSync, existsSync, mkdirSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+import { v4 as uuid } from "uuid";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const queueDir = join(__dirname, '..', '..', 'data', 'queue');
+const queueDir = join(__dirname, "..", "..", "data", "queue");
 
 // Ensure queue directory exists
 if (!existsSync(queueDir)) {
@@ -16,7 +16,7 @@ export interface QueueItem {
   chat_id: string | null;
   user_message: string;
   scheduled_time: string;
-  status: 'draft' | 'pending' | 'running' | 'completed' | 'failed';
+  status: "draft" | "pending" | "running" | "completed" | "failed";
   created_at: string;
   retry_count: number;
   error_message: string | null;
@@ -26,16 +26,15 @@ export interface QueueItem {
 }
 
 export class QueueFileService {
-
   // Get all queue items
   getAllQueueItems(status?: string, chatId?: string): QueueItem[] {
     try {
-      const files = readdirSync(queueDir).filter(file => file.endsWith('.json'));
+      const files = readdirSync(queueDir).filter((file) => file.endsWith(".json"));
       const items: QueueItem[] = [];
 
       for (const file of files) {
         try {
-          const content = readFileSync(join(queueDir, file), 'utf8');
+          const content = readFileSync(join(queueDir, file), "utf8");
           const item: QueueItem = JSON.parse(content);
 
           // Apply filters
@@ -51,7 +50,7 @@ export class QueueFileService {
       // Sort by scheduled_time
       return items.sort((a, b) => new Date(a.scheduled_time).getTime() - new Date(b.scheduled_time).getTime());
     } catch (error) {
-      console.error('Error reading queue directory:', error);
+      console.error("Error reading queue directory:", error);
       return [];
     }
   }
@@ -65,7 +64,7 @@ export class QueueFileService {
     }
 
     try {
-      const content = readFileSync(filepath, 'utf8');
+      const content = readFileSync(filepath, "utf8");
       return JSON.parse(content);
     } catch (error) {
       console.error(`Error reading queue item ${id}:`, error);
@@ -74,7 +73,14 @@ export class QueueFileService {
   }
 
   // Create a new queue item
-  createQueueItem(chatId: string | null, userMessage: string, scheduledTime: string, folder?: string, defaultPermissions?: any, isDraft: boolean = false): QueueItem {
+  createQueueItem(
+    chatId: string | null,
+    userMessage: string,
+    scheduledTime: string,
+    folder?: string,
+    defaultPermissions?: any,
+    isDraft: boolean = false,
+  ): QueueItem {
     const id = uuid();
     const now = new Date().toISOString();
 
@@ -83,12 +89,12 @@ export class QueueFileService {
       chat_id: chatId,
       user_message: userMessage,
       scheduled_time: scheduledTime,
-      status: isDraft ? 'draft' : 'pending',
+      status: isDraft ? "draft" : "pending",
       created_at: now,
       retry_count: 0,
       error_message: null,
       ...(folder && { folder }),
-      ...(defaultPermissions && { defaultPermissions })
+      ...(defaultPermissions && { defaultPermissions }),
     };
 
     this.saveQueueItem(item);
@@ -110,13 +116,13 @@ export class QueueFileService {
   // Convert a draft to a scheduled item
   convertDraftToScheduled(id: string, scheduledTime: string): boolean {
     const item = this.getQueueItem(id);
-    if (!item || item.status !== 'draft') {
+    if (!item || item.status !== "draft") {
       return false;
     }
 
     return this.updateQueueItem(id, {
-      status: 'pending',
-      scheduled_time: scheduledTime
+      status: "pending",
+      scheduled_time: scheduledTime,
     });
   }
 
@@ -146,20 +152,9 @@ export class QueueFileService {
   // Get due messages (for the processor)
   getDueMessages(limit: number = 10): QueueItem[] {
     const now = new Date().toISOString();
-    const allItems = this.getAllQueueItems('pending');
+    const allItems = this.getAllQueueItems("pending");
 
-    return allItems
-      .filter(item => item.scheduled_time <= now)
-      .slice(0, limit);
-  }
-
-  // Get upcoming messages (due in next hour)
-  getUpcomingMessages(): QueueItem[] {
-    const now = new Date().toISOString();
-    const nextHour = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-
-    return this.getAllQueueItems('pending')
-      .filter(item => item.scheduled_time >= now && item.scheduled_time <= nextHour);
+    return allItems.filter((item) => item.scheduled_time <= now).slice(0, limit);
   }
 }
 

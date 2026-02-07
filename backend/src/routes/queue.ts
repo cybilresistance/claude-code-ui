@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { queueFileService } from "../services/queue-file-service.js";
+import { sendMessage, type StreamEvent } from "../services/claude.js";
 
 export const queueRouter = Router();
 
@@ -181,63 +182,40 @@ queueRouter.post("/:id/execute-now", async (req, res) => {
     // Update status to running
     queueFileService.updateQueueItem(req.params.id, { status: "running" });
 
-    let apiUrl: string;
-    let requestBody: any;
+    // Call the service layer directly instead of making HTTP requests
+    const emitter = await sendMessage(
+      queueItem.chat_id
+        ? { chatId: queueItem.chat_id, prompt: queueItem.user_message }
+        : {
+            folder: queueItem.folder!,
+            prompt: queueItem.user_message,
+            defaultPermissions: queueItem.defaultPermissions,
+          },
+    );
 
-    if (queueItem.chat_id) {
-      // Existing chat - use regular message endpoint
-      apiUrl = `http://localhost:${process.env.PORT || 8000}/api/chats/${queueItem.chat_id}/message`;
-      requestBody = { prompt: queueItem.user_message };
-    } else {
-      // New chat - use new message endpoint
-      if (!queueItem.folder) {
-        throw new Error("Queue item missing required folder for new chat");
-      }
-      apiUrl = `http://localhost:${process.env.PORT || 8000}/api/chats/new/message`;
-      requestBody = {
-        folder: queueItem.folder,
-        prompt: queueItem.user_message,
-        defaultPermissions: queueItem.defaultPermissions,
+    // Wait for the session to complete or error
+    await new Promise<void>((resolve, reject) => {
+      const onEvent = (event: StreamEvent) => {
+        if (event.type === "done") {
+          emitter.removeListener("event", onEvent);
+          resolve();
+        } else if (event.type === "error") {
+          emitter.removeListener("event", onEvent);
+          reject(new Error(event.content || "Unknown stream error"));
+        }
       };
-    }
-
-    // Execute the message by making internal API call
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Cookie": req.headers.cookie || "",
-      },
-      body: JSON.stringify(requestBody),
+      emitter.on("event", onEvent);
     });
 
-    if (response.ok) {
-      // Delete the queue item when completed successfully
-      queueFileService.deleteQueueItem(req.params.id);
-      res.json({ success: true, message: "Message executed successfully" });
-    } else {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
+    // Delete the queue item when completed successfully
+    queueFileService.deleteQueueItem(req.params.id);
+    res.json({ success: true, message: "Message executed successfully" });
   } catch (error: any) {
     queueFileService.updateQueueItem(req.params.id, {
       status: "failed",
       error_message: error.message,
       retry_count: queueItem.retry_count + 1,
     });
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get upcoming messages (due in next hour)
-queueRouter.get("/upcoming/next-hour", (req, res) => {
-  // #swagger.tags = ['Queue']
-  // #swagger.summary = 'Get upcoming messages'
-  // #swagger.description = 'Returns queue items scheduled to execute within the next hour.'
-  /* #swagger.responses[200] = { description: "Array of upcoming queue items" } */
-  try {
-    const upcomingMessages = queueFileService.getUpcomingMessages();
-    res.json(upcomingMessages);
-  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
