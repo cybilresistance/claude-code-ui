@@ -264,9 +264,9 @@ These are referenced in inline styles but **never defined** in `index.css`:
 
 ## 9. Configuration Issues
 
-| Issue                                        | File                     | Detail                                                                             |
-| -------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------- |
-| **Wrong hardcoded path**                     | `ecosystem.config.cjs:6` | `cwd: '/home/exedev/claude-code-ui'` -- should be `/home/cybil/`                   |
-| **start-server.js ignores ecosystem.config** | `start-server.js`        | Runs `pm2 start` with inline args, bypassing the config file entirely              |
-| **`@types/multer` in dependencies**          | `package.json:26`        | Should be in `devDependencies`                                                     |
-| ~~**Redundant root `tsc` in build script**~~ | ~~`package.json:8`~~     | **FIXED** -- build script is now `npm run build:backend && npm run build:frontend` |
+| Issue                                            | File                     | Detail                                                                             |
+| ------------------------------------------------ | ------------------------ | ---------------------------------------------------------------------------------- |
+| ~~**Wrong hardcoded path**~~                     | `ecosystem.config.cjs:6` | **FIXED** -- now uses `__dirname` for portability across machines                  |
+| ~~**start-server.js ignores ecosystem.config**~~ | `start-server.js`        | **FIXED** -- now uses `pm2 start ecosystem.config.cjs` instead of inline args      |
+| **`@types/multer` in dependencies**              | `package.json:26`        | Should be in `devDependencies`                                                     |
+| ~~**Redundant root `tsc` in build script**~~     | ~~`package.json:8`~~     | **FIXED** -- build script is now `npm run build:backend && npm run build:frontend` |

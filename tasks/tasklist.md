@@ -62,7 +62,7 @@ Ordered by dependency, risk level, and impact. Complete top-to-bottom.
 
 ### 2.3 Fix Configuration Errors
 
-- [ ] Fix hardcoded path in `ecosystem.config.cjs` from `/home/exedev/` to `/home/cybil/`
+- [x] ~~Fix hardcoded path in `ecosystem.config.cjs` from `/home/exedev/` to `/home/cybil/`~~ (FIXED -- uses `__dirname` for portability across machines)
 - [ ] Move `@types/multer` from `dependencies` to `devDependencies` in `package.json`
 - [x] ~~Remove redundant root `tsc` call from the `build` script in `package.json`~~ (FIXED in recent commits)
 
@@ -290,7 +290,7 @@ Ordered by dependency, risk level, and impact. Complete top-to-bottom.
 
 ## Phase 11: Build & Config Cleanup (Low Risk)
 
-- [ ] Reconcile `start-server.js` with `ecosystem.config.cjs` -- use one or the other, not both
+- [x] ~~Reconcile `start-server.js` with `ecosystem.config.cjs` -- use one or the other, not both~~ (FIXED -- `start-server.js` now uses `ecosystem.config.cjs` instead of inline args)
 - [ ] Add comments to `tsconfig.json` files explaining different `target` choices (ES2022 vs ES2020)
 - [ ] Narrow lint-staged glob from `*.{ts,tsx}` to `{frontend,backend}/**/*.{ts,tsx}` for performance
 - [ ] Standardize monospace font stack across all components (currently 4 different stacks)
