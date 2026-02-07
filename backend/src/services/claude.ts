@@ -264,6 +264,7 @@ export async function sendMessage(
     options: {
       abortController,
       cwd: chat.folder,
+      settingSources: ["user", "project", "local"],
       maxTurns: 50,
       ...(chat.session_id ? { resume: chat.session_id } : {}),
       ...(activePlugins ? { plugins: buildPluginOptions(chat.folder, activePlugins) } : {}),
@@ -488,6 +489,7 @@ export async function sendNewMessage(
     options: {
       abortController,
       cwd: folder,
+      settingSources: ["user", "project", "local"],
       maxTurns: 50,
       ...(activePlugins ? { plugins: buildPluginOptions(folder, activePlugins) } : {}),
       env: {
@@ -671,6 +673,7 @@ export async function sendSlashCommand(chatId: string, command: string, activePl
     options: {
       abortController,
       cwd: chat.folder,
+      settingSources: ["user", "project", "local"],
       maxTurns: 50,
       ...(chat.session_id ? { resume: chat.session_id } : {}),
       ...(activePlugins ? { plugins: buildPluginOptions(chat.folder, activePlugins) } : {}),
