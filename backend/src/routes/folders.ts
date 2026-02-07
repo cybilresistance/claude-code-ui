@@ -5,6 +5,14 @@ export const foldersRouter = Router();
 
 // Browse directories and files in a given path
 foldersRouter.get("/browse", async (req, res) => {
+  // #swagger.tags = ['Folders']
+  // #swagger.summary = 'Browse directory'
+  // #swagger.description = 'List files and subdirectories at the given path.'
+  /* #swagger.parameters['path'] = { in: 'query', required: true, type: 'string', description: 'Absolute path to browse' } */
+  /* #swagger.parameters['showHidden'] = { in: 'query', type: 'boolean', description: 'Include hidden files (default: false)' } */
+  /* #swagger.parameters['limit'] = { in: 'query', type: 'integer', description: 'Max entries to return (default: 500)' } */
+  /* #swagger.responses[200] = { description: "Directory listing" } */
+  /* #swagger.responses[400] = { description: "Missing path parameter" } */
   try {
     const path = req.query.path as string;
     const showHidden = req.query.showHidden === "true";
@@ -24,6 +32,12 @@ foldersRouter.get("/browse", async (req, res) => {
 
 // Validate if a path exists and is accessible
 foldersRouter.get("/validate", async (req, res) => {
+  // #swagger.tags = ['Folders']
+  // #swagger.summary = 'Validate path'
+  // #swagger.description = 'Check if a path exists and is accessible.'
+  /* #swagger.parameters['path'] = { in: 'query', required: true, type: 'string', description: 'Path to validate' } */
+  /* #swagger.responses[200] = { description: "Validation result" } */
+  /* #swagger.responses[400] = { description: "Missing path parameter" } */
   try {
     const path = req.query.path as string;
 
@@ -41,6 +55,10 @@ foldersRouter.get("/validate", async (req, res) => {
 
 // Get suggested directories for quick access
 foldersRouter.get("/suggestions", async (req, res) => {
+  // #swagger.tags = ['Folders']
+  // #swagger.summary = 'Get folder suggestions'
+  // #swagger.description = 'Returns suggested directories for quick access (e.g., home, common project dirs).'
+  /* #swagger.responses[200] = { description: "Array of suggested directory paths" } */
   try {
     const suggestions = folderService.getSuggestions();
     res.json({ suggestions });
@@ -52,6 +70,11 @@ foldersRouter.get("/suggestions", async (req, res) => {
 
 // Get recently used directories derived from chat history
 foldersRouter.get("/recent", async (req, res) => {
+  // #swagger.tags = ['Folders']
+  // #swagger.summary = 'Get recent folders'
+  // #swagger.description = 'Returns recently used project directories derived from chat history.'
+  /* #swagger.parameters['limit'] = { in: 'query', type: 'integer', description: 'Max folders to return (default: 10)' } */
+  /* #swagger.responses[200] = { description: "Array of recent folder paths" } */
   try {
     const limit = parseInt(req.query.limit as string) || 10;
     const recent = folderService.getRecentFolders(limit);
@@ -64,6 +87,10 @@ foldersRouter.get("/recent", async (req, res) => {
 
 // Clear cache (useful for development/testing)
 foldersRouter.post("/clear-cache", (req, res) => {
+  // #swagger.tags = ['Folders']
+  // #swagger.summary = 'Clear folder cache'
+  // #swagger.description = 'Clear the folder browsing cache. Useful for development and testing.'
+  /* #swagger.responses[200] = { description: "Cache cleared" } */
   try {
     folderService.clearCache();
     res.json({ ok: true, message: "Cache cleared" });

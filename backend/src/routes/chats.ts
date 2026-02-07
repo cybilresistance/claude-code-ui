@@ -174,6 +174,12 @@ function discoverAllSessionsFallback(
 
 // List all chats (pull from log directories, augment with file storage data)
 chatsRouter.get("/", (req, res) => {
+  // #swagger.tags = ['Chats']
+  // #swagger.summary = 'List all chats'
+  // #swagger.description = 'Returns paginated list of chats from filesystem session logs, augmented with file storage metadata. Sorted by most recently updated.'
+  /* #swagger.parameters['limit'] = { in: 'query', type: 'integer', description: 'Number of chats per page (default: 20)' } */
+  /* #swagger.parameters['offset'] = { in: 'query', type: 'integer', description: 'Offset for pagination (default: 0)' } */
+  /* #swagger.responses[200] = { description: "Paginated chat list with hasMore and total fields" } */
   try {
     // Get all file chats for augmentation lookup (may be empty if no file storage)
     let fileChats: any[] = [];
@@ -278,6 +284,12 @@ chatsRouter.get("/", (req, res) => {
 
 // Get folder info for new chat (without creating a chat)
 chatsRouter.get("/new/info", (req, res) => {
+  // #swagger.tags = ['Chats']
+  // #swagger.summary = 'Get folder info for new chat'
+  // #swagger.description = 'Returns git info, slash commands, and plugins available for a given folder — used before creating a new chat.'
+  /* #swagger.parameters['folder'] = { in: 'query', type: 'string', required: true, description: 'Absolute path to the project folder' } */
+  /* #swagger.responses[200] = { description: "Folder info with git status, slash commands, and plugins" } */
+  /* #swagger.responses[400] = { description: "Missing or invalid folder" } */
   const folder = req.query.folder as string;
   if (!folder) return res.status(400).json({ error: "folder query param is required" });
 
@@ -312,6 +324,27 @@ chatsRouter.get("/new/info", (req, res) => {
 
 // Create a chat (only when sessionId is known - for resuming sessions)
 chatsRouter.post("/", (req, res) => {
+  // #swagger.tags = ['Chats']
+  // #swagger.summary = 'Create a chat'
+  // #swagger.description = 'Create a chat record for an existing session ID. Used when resuming sessions that need file storage records.'
+  /* #swagger.requestBody = {
+    required: true,
+    content: {
+      "application/json": {
+        schema: {
+          type: "object",
+          required: ["folder", "sessionId"],
+          properties: {
+            folder: { type: "string", description: "Absolute path to the project folder" },
+            sessionId: { type: "string", description: "Existing Claude session ID" },
+            defaultPermissions: { type: "object", description: "Default tool permissions for the session" }
+          }
+        }
+      }
+    }
+  } */
+  /* #swagger.responses[201] = { description: "Chat created" } */
+  /* #swagger.responses[400] = { description: "Missing required fields" } */
   const { folder, sessionId, defaultPermissions } = req.body;
   if (!folder) return res.status(400).json({ error: "folder is required" });
   if (!sessionId) return res.status(400).json({ error: "sessionId is required" });
@@ -352,6 +385,11 @@ chatsRouter.post("/", (req, res) => {
 
 // Delete a chat (only deletes from file storage if it exists there)
 chatsRouter.delete("/:id", (req, res) => {
+  // #swagger.tags = ['Chats']
+  // #swagger.summary = 'Delete a chat'
+  // #swagger.description = 'Delete a chat from file storage. Returns success even if the chat only existed in the filesystem.'
+  /* #swagger.parameters['id'] = { in: 'path', required: true, type: 'string', description: 'Chat ID or session ID' } */
+  /* #swagger.responses[200] = { description: "Chat deleted" } */
   try {
     const chat = chatFileService.getChat(req.params.id);
     if (chat) {
@@ -429,6 +467,12 @@ function findChat(id: string): any | null {
 
 // Get a single chat
 chatsRouter.get("/:id", (req, res) => {
+  // #swagger.tags = ['Chats']
+  // #swagger.summary = 'Get a single chat'
+  // #swagger.description = 'Retrieve a chat by ID from file storage or filesystem, including slash commands and plugins for the folder.'
+  /* #swagger.parameters['id'] = { in: 'path', required: true, type: 'string', description: 'Chat ID or session ID' } */
+  /* #swagger.responses[200] = { description: "Chat details with slash commands and plugins" } */
+  /* #swagger.responses[404] = { description: "Chat not found" } */
   const chat = findChat(req.params.id) as any;
   if (!chat) return res.status(404).json({ error: "Not found" });
 
@@ -470,6 +514,12 @@ function readJsonlFile(path: string): any[] {
 
 // Get messages from SDK session JSONL files (all sessions for this chat)
 chatsRouter.get("/:id/messages", (req, res) => {
+  // #swagger.tags = ['Chats']
+  // #swagger.summary = 'Get chat messages'
+  // #swagger.description = 'Returns parsed messages from all SDK session JSONL files associated with this chat. Includes text, thinking, tool_use, and tool_result blocks.'
+  /* #swagger.parameters['id'] = { in: 'path', required: true, type: 'string', description: 'Chat ID or session ID' } */
+  /* #swagger.responses[200] = { description: "Array of parsed messages" } */
+  /* #swagger.responses[404] = { description: "Chat not found" } */
   const chat = findChat(req.params.id) as any;
   if (!chat) return res.status(404).json({ error: "Not found" });
   if (!chat.session_id) return res.json([]);
@@ -494,6 +544,13 @@ chatsRouter.get("/:id/messages", (req, res) => {
 
 // Get slash commands and plugins for a chat
 chatsRouter.get("/:id/slash-commands", (req, res) => {
+  // #swagger.tags = ['Chats']
+  // #swagger.summary = 'Get slash commands and plugins'
+  // #swagger.description = 'Returns available slash commands, plugins, and all commands (including active plugin commands) for the chat folder.'
+  /* #swagger.parameters['id'] = { in: 'path', required: true, type: 'string', description: 'Chat ID or session ID' } */
+  /* #swagger.parameters['activePlugins'] = { in: 'query', type: 'array', items: { type: 'string' }, description: 'Active plugin IDs to include commands from' } */
+  /* #swagger.responses[200] = { description: "Slash commands, plugins, and allCommands arrays" } */
+  /* #swagger.responses[404] = { description: "Chat not found" } */
   const chat = findChat(req.params.id) as any;
   if (!chat) return res.status(404).json({ error: "Not found" });
 
