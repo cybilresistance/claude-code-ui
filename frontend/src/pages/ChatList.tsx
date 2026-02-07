@@ -278,6 +278,7 @@ export default function ChatList({ onLogout, onRefresh }: ChatListProps) {
                 padding: '10px 16px',
                 borderRadius: 8,
                 fontSize: 14,
+                alignSelf: 'flex-start',
               }}
             >
               Create
