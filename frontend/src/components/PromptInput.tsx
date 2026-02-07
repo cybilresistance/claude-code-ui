@@ -148,7 +148,7 @@ export default function PromptInput({ onSend, disabled, onSaveDraft, slashComman
             style={{
               width: '100%',
               background: 'var(--surface)',
-              border: '1px solid var(--border)',
+              border: '1px solid green',
               borderRadius: 10,
               padding: '10px 40px 10px 14px',
               fontSize: 15,
