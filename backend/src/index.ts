@@ -13,6 +13,7 @@ import { streamRouter } from './routes/stream.js';
 import { imagesRouter } from './routes/images.js';
 import { queueRouter } from './routes/queue.js';
 import { foldersRouter } from './routes/folders.js';
+import { gitRouter } from './routes/git.js';
 import { loginHandler, logoutHandler, checkAuthHandler, requireAuth } from './auth.js';
 import { queueProcessor } from './services/queue-processor.js';
 
@@ -37,6 +38,7 @@ app.use('/api/images', imagesRouter);
 app.use('/api/chats', imagesRouter);
 app.use('/api/queue', queueRouter);
 app.use('/api/folders', foldersRouter);
+app.use('/api/git', gitRouter);
 
 // Serve frontend static files in production
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

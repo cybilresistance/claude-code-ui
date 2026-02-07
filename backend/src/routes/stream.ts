@@ -6,6 +6,7 @@ import { statSync, existsSync, readdirSync, watchFile, unwatchFile, openSync, re
 import { join } from 'path';
 import { homedir } from 'os';
 import { chatFileService } from '../services/chat-file-service.js';
+import { ensureWorktree, switchBranch } from '../utils/git.js';
 
 export const streamRouter = Router();
 
@@ -79,13 +80,43 @@ async function generateAndSaveTitle(chatId: string, prompt: string): Promise<voi
 
 // Send first message to create a new chat (no existing chat ID required)
 streamRouter.post('/new/message', async (req, res) => {
-  const { folder, prompt, defaultPermissions, imageIds, activePlugins } = req.body;
+  const { folder, prompt, defaultPermissions, imageIds, activePlugins, branchConfig } = req.body;
   if (!folder) return res.status(400).json({ error: 'folder is required' });
   if (!prompt) return res.status(400).json({ error: 'prompt is required' });
 
   // Check if folder exists
   if (!existsSync(folder)) {
     return res.status(400).json({ error: 'folder does not exist' });
+  }
+
+  // Resolve effective folder based on branch configuration
+  let effectiveFolder = folder;
+  if (branchConfig) {
+    const { baseBranch, newBranch, useWorktree } = branchConfig;
+    const targetBranch = newBranch || baseBranch;
+
+    if (targetBranch && useWorktree) {
+      // Worktree mode: create/reuse a sibling worktree
+      try {
+        effectiveFolder = ensureWorktree(folder, targetBranch, !!newBranch, baseBranch);
+      } catch (err: any) {
+        return res.status(500).json({ error: `Failed to create worktree: ${err.message}` });
+      }
+    } else if (newBranch) {
+      // Non-worktree mode with new branch: create and checkout in original repo
+      try {
+        switchBranch(folder, newBranch, true, baseBranch);
+      } catch (err: any) {
+        return res.status(500).json({ error: `Failed to create branch: ${err.message}` });
+      }
+    } else if (baseBranch) {
+      // Non-worktree mode, different base branch selected: checkout
+      try {
+        switchBranch(folder, baseBranch, false);
+      } catch (err: any) {
+        return res.status(500).json({ error: `Failed to switch branch: ${err.message}` });
+      }
+    }
   }
 
   try {
@@ -107,10 +138,10 @@ streamRouter.post('/new/message', async (req, res) => {
       }
     }
 
-    // Start a new chat session
+    // Start a new chat session (using effectiveFolder which may be a worktree path)
     const emitter = await sendMessage({
       prompt,
-      folder,
+      folder: effectiveFolder,
       defaultPermissions,
       imageMetadata: imageMetadata.length > 0 ? imageMetadata : undefined,
       activePlugins,

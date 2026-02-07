@@ -277,3 +277,20 @@ export async function getSlashCommandsAndPlugins(chatId: string): Promise<{ slas
     plugins: data.plugins || []
   };
 }
+
+// Branch / worktree configuration
+
+export interface BranchConfig {
+  baseBranch?: string;
+  newBranch?: string;
+  useWorktree?: boolean;
+}
+
+export async function getGitBranches(folder: string): Promise<{ branches: string[] }> {
+  const res = await fetch(`${BASE}/git/branches?folder=${encodeURIComponent(folder)}`);
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.error || 'Failed to list branches');
+  }
+  return res.json();
+}

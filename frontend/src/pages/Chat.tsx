@@ -2,13 +2,14 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { RotateCw, CheckSquare, Square, Slash, ArrowLeft, ChevronDown, ArrowDown } from 'lucide-react';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { getChat, getMessages, getPending, respondToChat, getSessionStatus, uploadImages, getSlashCommands, getSlashCommandsAndPlugins, getNewChatInfo, type Chat as ChatType, type ParsedMessage, type SessionStatus, type Plugin, type NewChatInfo, type DefaultPermissions } from '../api';
+import { getChat, getMessages, getPending, respondToChat, getSessionStatus, uploadImages, getSlashCommands, getSlashCommandsAndPlugins, getNewChatInfo, type Chat as ChatType, type ParsedMessage, type SessionStatus, type Plugin, type NewChatInfo, type DefaultPermissions, type BranchConfig } from '../api';
 import MessageBubble, { TEAM_COLORS } from '../components/MessageBubble';
 import ToolCallBubble from '../components/ToolCallBubble';
 import PromptInput from '../components/PromptInput';
 import FeedbackPanel, { type PendingAction } from '../components/FeedbackPanel';
 import DraftModal from '../components/DraftModal';
 import SlashCommandsModal from '../components/SlashCommandsModal';
+import BranchSelector from '../components/BranchSelector';
 import { addRecentDirectory } from '../utils/localStorage';
 
 interface ToolGroup {
@@ -57,6 +58,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
   const [showSlashCommandsModal, setShowSlashCommandsModal] = useState(false);
   const [promptInputSetValue, setPromptInputSetValue] = useState<((value: string) => void) | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [branchConfig, setBranchConfig] = useState<BranchConfig>({});
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -357,6 +359,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
     setSessionStatus(null);
     setChat(null);
     setMessages([]);
+    setBranchConfig({});
     currentIdRef.current = undefined;
     tempChatIdRef.current = null;
 
@@ -516,6 +519,9 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
         if (activePluginIds.length > 0) {
           requestBody.activePlugins = activePluginIds;
         }
+        if (branchConfig.baseBranch || branchConfig.newBranch || branchConfig.useWorktree) {
+          requestBody.branchConfig = branchConfig;
+        }
 
         res = await fetch('/api/chats/new/message', {
           method: 'POST',
@@ -585,7 +591,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
         abortRef.current = null;
       }
     }
-  }, [id, folder, defaultPermissions, readSSE, activePluginIds, chat]);
+  }, [id, folder, defaultPermissions, readSSE, activePluginIds, chat, branchConfig]);
 
   // Keep ref in sync so readSSE can call handleSend without stale closure
   handleSendRef.current = handleSend;
@@ -1125,6 +1131,17 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
           </button>
         )}
       </div>
+
+      {/* Branch selector for git repos - shown above prompt for new chats */}
+      {!id && info?.is_git_repo && !pendingAction && (
+        <div style={{ padding: '0 16px' }}>
+          <BranchSelector
+            folder={folder}
+            currentBranch={info.git_branch || 'main'}
+            onChange={setBranchConfig}
+          />
+        </div>
+      )}
 
       {pendingAction ? (
         <FeedbackPanel action={pendingAction} onRespond={handleRespond} />
