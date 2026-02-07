@@ -427,13 +427,6 @@ export async function sendMessage(opts: SendMessageOptions): Promise<EventEmitte
       for await (const message of conversation) {
         if (abortController.signal.aborted) break;
 
-        logDebug("Received message from Claude SDK", {
-          keys: Object.keys(message),
-          type: (message as any).type,
-          hasSlashCommands: "slash_commands" in message,
-          fullMessage: message,
-        });
-
         // Capture slash commands from system initialization message
         if ("slash_commands" in message && message.slash_commands) {
           const slashCommands = message.slash_commands as string[];

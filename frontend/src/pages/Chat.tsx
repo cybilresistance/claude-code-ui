@@ -822,25 +822,25 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
             <RotateCw size={16} />
           </button>
         )}
-        {streaming && (
-          <button
-            onClick={handleStop}
-            style={{
-              background: 'var(--danger)',
-              color: '#fff',
-              padding: '8px',
-              borderRadius: 6,
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-            title="Stop generation"
-          >
-            <Square size={14} />
-          </button>
-        )}
+        <button
+          onClick={handleStop}
+          disabled={!streaming}
+          style={{
+            background: streaming ? 'var(--danger)' : 'var(--border)',
+            color: streaming ? '#fff' : 'var(--text-secondary)',
+            padding: '8px',
+            borderRadius: 6,
+            border: 'none',
+            cursor: streaming ? 'pointer' : 'default',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: streaming ? 1 : 0.5,
+          }}
+          title={streaming ? 'Stop generation' : 'No active generation'}
+        >
+          <Square size={14} />
+        </button>
       </header>
 
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
