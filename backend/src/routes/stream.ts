@@ -1,16 +1,14 @@
-import { Router } from 'express';
-import { sendMessage, getActiveSession, stopSession, respondToPermission, hasPendingRequest, getPendingRequest, type StreamEvent } from '../services/claude.js';
-import { OpenRouterClient } from '../services/openrouter-client.js';
-import { ImageStorageService } from '../services/image-storage.js';
-import { statSync, existsSync, readdirSync, watchFile, unwatchFile, openSync, readSync, closeSync } from 'fs';
-import { join } from 'path';
-import { homedir } from 'os';
-import { chatFileService } from '../services/chat-file-service.js';
-import { ensureWorktree, switchBranch } from '../utils/git.js';
+import { Router } from "express";
+import { sendMessage, getActiveSession, stopSession, respondToPermission, hasPendingRequest, getPendingRequest, type StreamEvent } from "../services/claude.js";
+import { OpenRouterClient } from "../services/openrouter-client.js";
+import { ImageStorageService } from "../services/image-storage.js";
+import { statSync, existsSync, readdirSync, watchFile, unwatchFile, openSync, readSync, closeSync } from "fs";
+import { join } from "path";
+import { chatFileService } from "../services/chat-file-service.js";
+import { ensureWorktree, switchBranch } from "../utils/git.js";
+import { CLAUDE_PROJECTS_DIR } from "../utils/paths.js";
 
 export const streamRouter = Router();
-
-const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects');
 
 /**
  * Find the session JSONL file in ~/.claude/projects/.
@@ -58,35 +56,34 @@ async function generateAndSaveTitle(chatId: string, prompt: string): Promise<voi
   const chat = chatFileService.getChat(chatId);
   if (!chat) return;
 
-  const meta = JSON.parse(chat.metadata || '{}');
+  const meta = JSON.parse(chat.metadata || "{}");
   if (meta.title) return; // already has a title
 
   const result = await client.generateChatTitle({ userMessage: prompt });
   if (result.success && result.content) {
     // Re-read metadata to avoid race condition with slash commands being saved
     const latestChat = chatFileService.getChat(chatId);
-    const latestMeta = latestChat ? JSON.parse(latestChat.metadata || '{}') : {};
+    const latestMeta = latestChat ? JSON.parse(latestChat.metadata || "{}") : {};
 
     latestMeta.title = result.content;
     chatFileService.updateChat(chatId, {
-      metadata: JSON.stringify(latestMeta)
+      metadata: JSON.stringify(latestMeta),
     });
     console.log(`[OpenRouter] Generated title for ${chatId}: "${result.content}"`);
   } else {
-    console.warn('[OpenRouter] Title generation failed:', result.error);
+    console.warn("[OpenRouter] Title generation failed:", result.error);
   }
 }
 
-
 // Send first message to create a new chat (no existing chat ID required)
-streamRouter.post('/new/message', async (req, res) => {
+streamRouter.post("/new/message", async (req, res) => {
   const { folder, prompt, defaultPermissions, imageIds, activePlugins, branchConfig } = req.body;
-  if (!folder) return res.status(400).json({ error: 'folder is required' });
-  if (!prompt) return res.status(400).json({ error: 'prompt is required' });
+  if (!folder) return res.status(400).json({ error: "folder is required" });
+  if (!prompt) return res.status(400).json({ error: "prompt is required" });
 
   // Check if folder exists
   if (!existsSync(folder)) {
-    return res.status(400).json({ error: 'folder does not exist' });
+    return res.status(400).json({ error: "folder does not exist" });
   }
 
   // Resolve effective folder based on branch configuration
@@ -129,7 +126,7 @@ streamRouter.post('/new/message', async (req, res) => {
           if (result) {
             imageMetadata.push({
               buffer: result.buffer,
-              mimeType: result.image.mimeType
+              mimeType: result.image.mimeType,
             });
           }
         } catch (error) {
@@ -148,18 +145,18 @@ streamRouter.post('/new/message', async (req, res) => {
     });
 
     res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
     });
 
     let chatId: string | null = null;
 
     const onEvent = (event: StreamEvent) => {
       // Handle chat_created event - capture chatId and forward to client
-      if (event.type === 'chat_created') {
+      if (event.type === "chat_created") {
         chatId = event.chatId || null;
-        res.write(`data: ${JSON.stringify({ type: 'chat_created', chatId: event.chatId, chat: event.chat })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: "chat_created", chatId: event.chatId, chat: event.chat })}\n\n`);
 
         // Generate title for the new chat
         if (chatId) {
@@ -168,25 +165,25 @@ streamRouter.post('/new/message', async (req, res) => {
         return;
       }
 
-      if (event.type === 'done') {
-        res.write(`data: ${JSON.stringify({ type: 'message_complete' })}\n\n`);
-        emitter.removeListener('event', onEvent);
+      if (event.type === "done") {
+        res.write(`data: ${JSON.stringify({ type: "message_complete" })}\n\n`);
+        emitter.removeListener("event", onEvent);
         res.end();
-      } else if (event.type === 'error') {
-        res.write(`data: ${JSON.stringify({ type: 'message_error', content: event.content })}\n\n`);
-        emitter.removeListener('event', onEvent);
+      } else if (event.type === "error") {
+        res.write(`data: ${JSON.stringify({ type: "message_error", content: event.content })}\n\n`);
+        emitter.removeListener("event", onEvent);
         res.end();
-      } else if (event.type === 'permission_request' || event.type === 'user_question' || event.type === 'plan_review') {
+      } else if (event.type === "permission_request" || event.type === "user_question" || event.type === "plan_review") {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       } else {
-        res.write(`data: ${JSON.stringify({ type: 'message_update' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: "message_update" })}\n\n`);
       }
     };
 
-    emitter.on('event', onEvent);
+    emitter.on("event", onEvent);
 
-    req.on('close', () => {
-      emitter.removeListener('event', onEvent);
+    req.on("close", () => {
+      emitter.removeListener("event", onEvent);
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -194,15 +191,15 @@ streamRouter.post('/new/message', async (req, res) => {
 });
 
 // Send a message and get SSE stream back
-streamRouter.post('/:id/message', async (req, res) => {
-  console.log('[DEBUG] Route hit:', req.method, req.path, JSON.stringify(req.body));
+streamRouter.post("/:id/message", async (req, res) => {
+  console.log("[DEBUG] Route hit:", req.method, req.path, JSON.stringify(req.body));
   const { prompt, imageIds, activePlugins } = req.body;
-  if (!prompt) return res.status(400).json({ error: 'prompt is required' });
+  if (!prompt) return res.status(400).json({ error: "prompt is required" });
 
   console.log(`[DEBUG] Received message request:`, {
-    prompt: prompt?.substring(0, 100) + '...',
+    prompt: prompt?.substring(0, 100) + "...",
     imageIds,
-    imageIdsLength: imageIds?.length || 0
+    imageIdsLength: imageIds?.length || 0,
   });
 
   try {
@@ -219,7 +216,7 @@ streamRouter.post('/:id/message', async (req, res) => {
             console.log(`[DEBUG] Successfully loaded image ${imageId}, size: ${result.buffer.length} bytes, mimeType: ${result.image.mimeType}`);
             imageMetadata.push({
               buffer: result.buffer,
-              mimeType: result.image.mimeType
+              mimeType: result.image.mimeType,
             });
           } else {
             console.warn(`[DEBUG] Image not found: ${imageId}`);
@@ -248,40 +245,39 @@ streamRouter.post('/:id/message', async (req, res) => {
     await generateAndSaveTitle(req.params.id, prompt);
 
     res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
     });
 
     const onEvent = (event: StreamEvent) => {
       // Send notification events instead of full content
-      if (event.type === 'done') {
-        res.write(`data: ${JSON.stringify({ type: 'message_complete' })}\n\n`);
-        emitter.removeListener('event', onEvent);
+      if (event.type === "done") {
+        res.write(`data: ${JSON.stringify({ type: "message_complete" })}\n\n`);
+        emitter.removeListener("event", onEvent);
         res.end();
-      } else if (event.type === 'error') {
-        res.write(`data: ${JSON.stringify({ type: 'message_error', content: event.content })}\n\n`);
-        emitter.removeListener('event', onEvent);
+      } else if (event.type === "error") {
+        res.write(`data: ${JSON.stringify({ type: "message_error", content: event.content })}\n\n`);
+        emitter.removeListener("event", onEvent);
         res.end();
-      } else if (event.type === 'permission_request' || event.type === 'user_question' || event.type === 'plan_review') {
+      } else if (event.type === "permission_request" || event.type === "user_question" || event.type === "plan_review") {
         // Still send permission/interaction requests as before
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       } else {
         // For other events (text, thinking, tool_use, tool_result), just send a notification
-        res.write(`data: ${JSON.stringify({ type: 'message_update' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: "message_update" })}\n\n`);
       }
     };
 
-    emitter.on('event', onEvent);
+    emitter.on("event", onEvent);
 
-    req.on('close', () => {
-      emitter.removeListener('event', onEvent);
+    req.on("close", () => {
+      emitter.removeListener("event", onEvent);
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 /**
  * Store image metadata for a message in chat metadata
@@ -294,7 +290,7 @@ async function storeMessageImages(chatId: string, imageIds: string[]): Promise<v
     return;
   }
 
-  const metadata = JSON.parse(chat.metadata || '{}');
+  const metadata = JSON.parse(chat.metadata || "{}");
 
   // Create a unique message ID for this set of images
   const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2)}`;
@@ -306,51 +302,51 @@ async function storeMessageImages(chatId: string, imageIds: string[]): Promise<v
   metadata.messageImages[messageId] = {
     imageIds,
     timestamp: new Date().toISOString(),
-    messageType: 'user'
+    messageType: "user",
   };
 
   // Update the chat metadata
   chatFileService.updateChat(chatId, {
-    metadata: JSON.stringify(metadata)
+    metadata: JSON.stringify(metadata),
   });
 }
 
 // SSE endpoint for connecting to an active stream (web or CLI)
-streamRouter.get('/:id/stream', (req, res) => {
+streamRouter.get("/:id/stream", (req, res) => {
   const chatId = req.params.id;
   const session = getActiveSession(chatId);
 
   res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
   });
 
   // If there's an active web session, connect to it
   if (session) {
     const onEvent = (event: StreamEvent) => {
       // Send notification events instead of full content
-      if (event.type === 'done') {
-        res.write(`data: ${JSON.stringify({ type: 'message_complete' })}\n\n`);
-        session.emitter.removeListener('event', onEvent);
+      if (event.type === "done") {
+        res.write(`data: ${JSON.stringify({ type: "message_complete" })}\n\n`);
+        session.emitter.removeListener("event", onEvent);
         res.end();
-      } else if (event.type === 'error') {
-        res.write(`data: ${JSON.stringify({ type: 'message_error', content: event.content })}\n\n`);
-        session.emitter.removeListener('event', onEvent);
+      } else if (event.type === "error") {
+        res.write(`data: ${JSON.stringify({ type: "message_error", content: event.content })}\n\n`);
+        session.emitter.removeListener("event", onEvent);
         res.end();
-      } else if (event.type === 'permission_request' || event.type === 'user_question' || event.type === 'plan_review') {
+      } else if (event.type === "permission_request" || event.type === "user_question" || event.type === "plan_review") {
         // Still send permission/interaction requests as before
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       } else {
         // For other events (text, thinking, tool_use, tool_result), just send a notification
-        res.write(`data: ${JSON.stringify({ type: 'message_update' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: "message_update" })}\n\n`);
       }
     };
 
-    session.emitter.on('event', onEvent);
+    session.emitter.on("event", onEvent);
 
-    req.on('close', () => {
-      session.emitter.removeListener('event', onEvent);
+    req.on("close", () => {
+      session.emitter.removeListener("event", onEvent);
     });
     return;
   }
@@ -358,14 +354,14 @@ streamRouter.get('/:id/stream', (req, res) => {
   // No web session - check if we can watch CLI session
   const chat = findChatForStatus(chatId);
   if (!chat?.session_id) {
-    res.write(`data: ${JSON.stringify({ type: 'error', content: 'No active session found' })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: "error", content: "No active session found" })}\n\n`);
     res.end();
     return;
   }
 
   const logPath = findSessionLogPath(chat.session_id);
   if (!logPath || !existsSync(logPath)) {
-    res.write(`data: ${JSON.stringify({ type: 'error', content: 'Session log not found' })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: "error", content: "Session log not found" })}\n\n`);
     res.end();
     return;
   }
@@ -382,12 +378,12 @@ streamRouter.get('/:id/stream', (req, res) => {
       if (newStats.size > lastPosition) {
         // Read only the new content since last position
         const buffer = Buffer.alloc(newStats.size - lastPosition);
-        const fd = openSync(logPath, 'r');
+        const fd = openSync(logPath, "r");
         readSync(fd, buffer, 0, buffer.length, lastPosition);
         closeSync(fd);
 
-        const newContent = buffer.toString('utf-8');
-        const lines = newContent.split('\n');
+        const newContent = buffer.toString("utf-8");
+        const lines = newContent.split("\n");
 
         for (const line of lines) {
           if (!line.trim()) continue;
@@ -395,34 +391,34 @@ streamRouter.get('/:id/stream', (req, res) => {
             const parsed = JSON.parse(line);
             if (parsed.message?.content) {
               // Just notify that there's new content, don't send the actual content
-              res.write(`data: ${JSON.stringify({ type: 'message_update' })}\n\n`);
+              res.write(`data: ${JSON.stringify({ type: "message_update" })}\n\n`);
             }
 
             // Check if this is the end of the conversation
-            if (parsed.type === 'summary' || (parsed.message?.stop_reason)) {
-              res.write(`data: ${JSON.stringify({ type: 'message_complete' })}\n\n`);
+            if (parsed.type === "summary" || parsed.message?.stop_reason) {
+              res.write(`data: ${JSON.stringify({ type: "message_complete" })}\n\n`);
             }
           } catch (err) {
             // Log parsing errors for debugging instead of silently ignoring
-            console.warn('[CLI Monitor] Failed to parse log line:', err instanceof Error ? err.message : 'Unknown error', 'Line:', line.slice(0, 100));
+            console.warn("[CLI Monitor] Failed to parse log line:", err instanceof Error ? err.message : "Unknown error", "Line:", line.slice(0, 100));
           }
         }
         lastPosition = newStats.size;
       }
     } catch (err) {
-      console.warn('[CLI Monitor] File watch error:', err instanceof Error ? err.message : 'Unknown error');
+      console.warn("[CLI Monitor] File watch error:", err instanceof Error ? err.message : "Unknown error");
     }
   };
 
   watchFile(logPath, { interval: 1000 }, watchHandler);
 
-  req.on('close', () => {
+  req.on("close", () => {
     unwatchFile(logPath, watchHandler);
   });
 });
 
 // Check for a pending request (for page refresh reconnection)
-streamRouter.get('/:id/pending', (req, res) => {
+streamRouter.get("/:id/pending", (req, res) => {
   const pending = getPendingRequest(req.params.id);
   if (!pending) return res.json({ pending: null });
   res.json({
@@ -434,17 +430,17 @@ streamRouter.get('/:id/pending', (req, res) => {
 });
 
 // Respond to a pending permission/question/plan request
-streamRouter.post('/:id/respond', (req, res) => {
+streamRouter.post("/:id/respond", (req, res) => {
   const { allow, updatedInput, updatedPermissions } = req.body;
   if (!hasPendingRequest(req.params.id)) {
-    return res.status(404).json({ error: 'No pending request' });
+    return res.status(404).json({ error: "No pending request" });
   }
   const result = respondToPermission(req.params.id, allow, updatedInput, updatedPermissions);
   res.json({ ok: result.ok, toolName: result.toolName });
 });
 
 // Check session status - active in web, CLI, or inactive
-streamRouter.get('/:id/status', (req, res) => {
+streamRouter.get("/:id/status", (req, res) => {
   const chatId = req.params.id;
 
   // Check if session is active in web
@@ -452,45 +448,45 @@ streamRouter.get('/:id/status', (req, res) => {
   if (webSession) {
     return res.json({
       active: true,
-      type: 'web',
-      hasPending: hasPendingRequest(chatId)
+      type: "web",
+      hasPending: hasPendingRequest(chatId),
     });
   }
 
   // Check if session exists and get its log path
   const chat = findChatForStatus(chatId);
   if (!chat || !chat.session_id) {
-    return res.json({ active: false, type: 'none' });
+    return res.json({ active: false, type: "none" });
   }
 
   // Check CLI activity by examining .jsonl file modification time
   const logPath = findSessionLogPath(chat.session_id);
   if (!logPath || !existsSync(logPath)) {
-    return res.json({ active: false, type: 'none' });
+    return res.json({ active: false, type: "none" });
   }
 
   try {
     const stats = statSync(logPath);
     const lastModified = stats.mtime.getTime();
     const now = Date.now();
-    const fiveMinutesAgo = now - (5 * 60 * 1000);
+    const fiveMinutesAgo = now - 5 * 60 * 1000;
 
     // Consider CLI session active if .jsonl was modified in last 5 minutes
     const isRecentlyActive = lastModified > fiveMinutesAgo;
 
     res.json({
       active: isRecentlyActive,
-      type: isRecentlyActive ? 'cli' : 'inactive',
+      type: isRecentlyActive ? "cli" : "inactive",
       lastActivity: stats.mtime.toISOString(),
-      fileSize: stats.size
+      fileSize: stats.size,
     });
   } catch {
-    res.json({ active: false, type: 'none' });
+    res.json({ active: false, type: "none" });
   }
 });
 
 // Stop execution
-streamRouter.post('/:id/stop', (_req, res) => {
+streamRouter.post("/:id/stop", (_req, res) => {
   const stopped = stopSession(_req.params.id);
   res.json({ stopped });
 });

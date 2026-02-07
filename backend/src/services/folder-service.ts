@@ -1,11 +1,12 @@
-import { readdirSync, statSync, existsSync } from 'fs';
-import { join, dirname, resolve } from 'path';
-import { homedir } from 'os';
+import { readdirSync, statSync, existsSync } from "fs";
+import { join, dirname, resolve, basename } from "path";
+import { homedir } from "os";
+import { CLAUDE_PROJECTS_DIR, projectDirToFolder } from "../utils/paths.js";
 
 export interface FolderItem {
   name: string;
   path: string;
-  type: 'directory' | 'file';
+  type: "directory" | "file";
   isHidden: boolean;
   size?: number;
   modified?: string;
@@ -32,7 +33,31 @@ export interface FolderSuggestion {
   path: string;
   name: string;
   description: string;
-  type: 'system' | 'user' | 'recent';
+  type: "system" | "user" | "recent";
+}
+
+export interface RecentFolder extends FolderSuggestion {
+  type: "recent";
+  lastUsed: string;
+  chatCount: number;
+}
+
+/**
+ * Format a date as a human-readable "time ago" string.
+ */
+function formatTimeAgo(date: Date): string {
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMinutes < 1) return "just now";
+  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+  if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} week${Math.floor(diffDays / 7) === 1 ? "" : "s"} ago`;
+  return `${Math.floor(diffDays / 30)} month${Math.floor(diffDays / 30) === 1 ? "" : "s"} ago`;
 }
 
 export class FolderService {
@@ -48,7 +73,7 @@ export class FolderService {
 
     // Check cache first
     const cached = this.cache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp) < this.CACHE_TTL) {
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
       return cached.data;
     }
 
@@ -57,7 +82,7 @@ export class FolderService {
       files: [],
       parent: null,
       exists: false,
-      currentPath: resolvedPath
+      currentPath: resolvedPath,
     };
 
     try {
@@ -80,7 +105,7 @@ export class FolderService {
         if (processedCount >= limit) break;
 
         const itemPath = join(resolvedPath, item);
-        const isHidden = item.startsWith('.');
+        const isHidden = item.startsWith(".");
 
         // Skip hidden files if not requested
         if (isHidden && !showHidden) continue;
@@ -90,15 +115,15 @@ export class FolderService {
           const folderItem: FolderItem = {
             name: item,
             path: itemPath,
-            type: itemStat.isDirectory() ? 'directory' : 'file',
+            type: itemStat.isDirectory() ? "directory" : "file",
             isHidden,
             size: itemStat.size,
-            modified: itemStat.mtime.toISOString()
+            modified: itemStat.mtime.toISOString(),
           };
 
           // Check if directory is a git repository
           if (itemStat.isDirectory()) {
-            folderItem.isGitRepo = existsSync(join(itemPath, '.git'));
+            folderItem.isGitRepo = existsSync(join(itemPath, ".git"));
             result.directories.push(folderItem);
           } else {
             result.files.push(folderItem);
@@ -120,7 +145,7 @@ export class FolderService {
 
       return result;
     } catch (err) {
-      console.error('Error browsing directory:', err);
+      console.error("Error browsing directory:", err);
       return result;
     }
   }
@@ -137,27 +162,121 @@ export class FolderService {
         return {
           valid: false,
           exists: false,
-          readable: false
+          readable: false,
         };
       }
 
       const stat = statSync(resolvedPath);
       const isDirectory = stat.isDirectory();
-      const isGit = isDirectory && existsSync(join(resolvedPath, '.git'));
+      const isGit = isDirectory && existsSync(join(resolvedPath, ".git"));
 
       return {
         valid: true,
         exists: true,
         readable: true,
         isDirectory,
-        isGit
+        isGit,
       };
     } catch (err) {
       return {
         valid: false,
         exists: existsSync(resolvedPath),
-        readable: false
+        readable: false,
       };
+    }
+  }
+
+  /**
+   * Get recently used directories derived from chat history.
+   * Scans ~/.claude/projects/ to find directories that have been used for chats,
+   * sorted by most recent activity.
+   */
+  getRecentFolders(limit: number = 10): RecentFolder[] {
+    // Check cache
+    const cacheKey = `recent:${limit}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      return cached.data as unknown as RecentFolder[];
+    }
+
+    if (!existsSync(CLAUDE_PROJECTS_DIR)) return [];
+
+    try {
+      const projectDirs = readdirSync(CLAUDE_PROJECTS_DIR);
+      const folderMap = new Map<string, { lastUsed: Date; chatCount: number }>();
+
+      for (const dir of projectDirs) {
+        const dirPath = join(CLAUDE_PROJECTS_DIR, dir);
+        try {
+          const dirStat = statSync(dirPath);
+          if (!dirStat.isDirectory()) continue;
+        } catch {
+          continue;
+        }
+
+        const folder = projectDirToFolder(dir);
+
+        // Skip directories that no longer exist
+        if (!existsSync(folder)) continue;
+
+        // Count .jsonl files and find most recent modification
+        let latestMtime = new Date(0);
+        let count = 0;
+
+        try {
+          const files = readdirSync(dirPath);
+          for (const file of files) {
+            if (!file.endsWith(".jsonl")) continue;
+            count++;
+            try {
+              const fileStat = statSync(join(dirPath, file));
+              if (fileStat.mtime > latestMtime) {
+                latestMtime = fileStat.mtime;
+              }
+            } catch {
+              continue;
+            }
+          }
+        } catch {
+          continue;
+        }
+
+        if (count === 0) continue;
+
+        // Merge with existing entry if same folder resolved from multiple project dirs
+        const existing = folderMap.get(folder);
+        if (existing) {
+          existing.chatCount += count;
+          if (latestMtime > existing.lastUsed) {
+            existing.lastUsed = latestMtime;
+          }
+        } else {
+          folderMap.set(folder, { lastUsed: latestMtime, chatCount: count });
+        }
+      }
+
+      // Sort by most recent, take limit
+      const sorted = [...folderMap.entries()].sort((a, b) => b[1].lastUsed.getTime() - a[1].lastUsed.getTime()).slice(0, limit);
+
+      const results: RecentFolder[] = sorted.map(([path, info]) => {
+        const ago = formatTimeAgo(info.lastUsed);
+        return {
+          path,
+          name: basename(path),
+          description: `Used ${ago}`,
+          type: "recent" as const,
+          lastUsed: info.lastUsed.toISOString(),
+          chatCount: info.chatCount,
+        };
+      });
+
+      // Cache the results
+      this.cache.set(cacheKey, { data: results as unknown as BrowseResult, timestamp: Date.now() });
+
+      return results;
+    } catch (err) {
+      console.error("Error getting recent folders:", err);
+      return [];
     }
   }
 
@@ -169,19 +288,19 @@ export class FolderService {
 
     // System directories
     const systemDirs = [
-      { path: '/', name: 'Root', description: 'System root directory' },
-      { path: '/home', name: 'Home', description: 'User home directories' },
-      { path: '/opt', name: 'Optional', description: 'Optional software packages' },
-      { path: '/usr/local', name: 'Local', description: 'Local software installations' },
-      { path: '/var', name: 'Variable', description: 'Variable data files' },
-      { path: '/tmp', name: 'Temp', description: 'Temporary files' }
+      { path: "/", name: "Root", description: "System root directory" },
+      { path: "/home", name: "Home", description: "User home directories" },
+      { path: "/opt", name: "Optional", description: "Optional software packages" },
+      { path: "/usr/local", name: "Local", description: "Local software installations" },
+      { path: "/var", name: "Variable", description: "Variable data files" },
+      { path: "/tmp", name: "Temp", description: "Temporary files" },
     ];
 
     for (const dir of systemDirs) {
       if (existsSync(dir.path)) {
         suggestions.push({
           ...dir,
-          type: 'system'
+          type: "system",
         });
       }
     }
@@ -191,14 +310,14 @@ export class FolderService {
     if (existsSync(home)) {
       suggestions.push({
         path: home,
-        name: 'Home Directory',
-        description: 'Your personal home directory',
-        type: 'user'
+        name: "Home Directory",
+        description: "Your personal home directory",
+        type: "user",
       });
     }
 
     // Common development directories in home
-    const devDirs = ['Desktop', 'Documents', 'Downloads', 'Projects', 'workspace', 'code', 'dev'];
+    const devDirs = ["Desktop", "Documents", "Downloads", "Projects", "workspace", "code", "dev"];
     for (const dir of devDirs) {
       const fullPath = join(home, dir);
       if (existsSync(fullPath)) {
@@ -206,8 +325,17 @@ export class FolderService {
           path: fullPath,
           name: dir,
           description: `${dir} directory`,
-          type: 'user'
+          type: "user",
         });
+      }
+    }
+
+    // Recent directories from chat history
+    const recentFolders = this.getRecentFolders(5);
+    for (const recent of recentFolders) {
+      // Avoid duplicates with system/user suggestions
+      if (!suggestions.some((s) => s.path === recent.path)) {
+        suggestions.push(recent);
       }
     }
 

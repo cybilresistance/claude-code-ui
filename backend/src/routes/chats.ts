@@ -1,15 +1,13 @@
-import { Router } from 'express';
-import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
-import { execSync } from 'child_process';
-import { homedir } from 'os';
-import { join } from 'path';
-import { chatFileService } from '../services/chat-file-service.js';
-import { getSlashCommandsForDirectory, getCommandsAndPluginsForDirectory, getAllCommandsForDirectory } from '../services/slashCommands.js';
-import { getGitInfo } from '../utils/git.js';
+import { Router } from "express";
+import { readFileSync, existsSync, readdirSync, statSync } from "fs";
+import { execSync } from "child_process";
+import { join } from "path";
+import { chatFileService } from "../services/chat-file-service.js";
+import { getSlashCommandsForDirectory, getCommandsAndPluginsForDirectory, getAllCommandsForDirectory } from "../services/slashCommands.js";
+import { getGitInfo } from "../utils/git.js";
+import { CLAUDE_PROJECTS_DIR, projectDirToFolder } from "../utils/paths.js";
 
 export const chatsRouter = Router();
-
-const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects');
 
 // Cache for git info to avoid repeated expensive operations
 const gitInfoCache = new Map<string, { isGitRepo: boolean; branch?: string; cachedAt: number }>();
@@ -31,44 +29,13 @@ function findSessionLogPath(sessionId: string): string | null {
 }
 
 /**
- * Convert a project directory name back to a folder path.
- * The SDK encodes paths by replacing / with -, so "-home-exedev-my-app"
- * is ambiguous (could be /home/exedev/my-app or /home/exedev/my/app).
- * We try all possible splits and return the first path that exists on disk.
- */
-function projectDirToFolder(dirName: string): string {
-  // Strip leading dash (represents the root /)
-  const parts = dirName.slice(1).split('-');
-
-  // Try all possible ways to rejoin the parts with / or -
-  function resolve(index: number, current: string): string | null {
-    if (index === parts.length) {
-      return existsSync(current) ? current : null;
-    }
-    // Try joining with / first (prefer deeper paths)
-    const withSlash = resolve(index + 1, current + '/' + parts[index]);
-    if (withSlash) return withSlash;
-    // Then try joining with - (keeps it as part of the folder name)
-    const withDash = resolve(index + 1, current + '-' + parts[index]);
-    if (withDash) return withDash;
-    return null;
-  }
-
-  const resolved = resolve(1, '/' + parts[0]);
-  if (resolved) return resolved;
-
-  // Fallback: naive replacement
-  return '/' + parts.join('/');
-}
-
-/**
  * Get cached git info or fetch and cache it
  */
 function getCachedGitInfo(folder: string): { isGitRepo: boolean; branch?: string } {
   const cached = gitInfoCache.get(folder);
   const now = Date.now();
 
-  if (cached && (now - cached.cachedAt) < GIT_CACHE_TTL) {
+  if (cached && now - cached.cachedAt < GIT_CACHE_TTL) {
     return { isGitRepo: cached.isGitRepo, branch: cached.branch };
   }
 
@@ -85,7 +52,10 @@ function getCachedGitInfo(folder: string): { isGitRepo: boolean; branch?: string
  * Discover session JSONL files using filesystem-level sorting for optimal performance.
  * Only processes the files needed for the current page.
  */
-function discoverSessionsPaginated(limit: number, offset: number): {
+function discoverSessionsPaginated(
+  limit: number,
+  offset: number,
+): {
   sessions: { sessionId: string; folder: string; filePath: string; createdAt: Date; updatedAt: Date }[];
   total: number;
 } {
@@ -97,21 +67,22 @@ function discoverSessionsPaginated(limit: number, offset: number): {
     // Use -maxdepth 2 to only get .jsonl files directly inside project folders,
     // excluding subagents/ subdirectories (projects/<name>/subagents/<id>.jsonl)
     const findCommand = `find "${CLAUDE_PROJECTS_DIR}" -maxdepth 2 -name "*.jsonl" -type f -print0 | xargs -0 ls -lt`;
-    const output = execSync(findCommand, { encoding: 'utf8' }).trim();
+    const output = execSync(findCommand, { encoding: "utf8" }).trim();
 
     if (!output) return { sessions: [], total: 0 };
 
     // Parse ls -lt output and extract file paths
     // Since ls -t already sorts by modification time, we can use statSync only on paginated files
-    const filePathsFromLs = output.split('\n')
-      .filter(line => line.trim() && line.includes('.jsonl'))
-      .map(line => {
+    const filePathsFromLs = output
+      .split("\n")
+      .filter((line) => line.trim() && line.includes(".jsonl"))
+      .map((line) => {
         // Extract filepath from the end of ls -l output
         const parts = line.trim().split(/\s+/);
         if (parts.length < 9) return null;
 
-        const filePath = parts.slice(8).join(' '); // Handle spaces in filenames
-        if (!filePath.endsWith('.jsonl')) return null;
+        const filePath = parts.slice(8).join(" "); // Handle spaces in filenames
+        if (!filePath.endsWith(".jsonl")) return null;
 
         return filePath;
       })
@@ -126,10 +97,10 @@ function discoverSessionsPaginated(limit: number, offset: number): {
     // Only call statSync on the paginated files we actually need
     for (const filePath of pageFiles) {
       try {
-        const sessionId = filePath.split('/').pop()?.replace('.jsonl', '');
+        const sessionId = filePath.split("/").pop()?.replace(".jsonl", "");
         if (!sessionId) continue;
 
-        const projectDir = filePath.split('/').slice(0, -1).pop();
+        const projectDir = filePath.split("/").slice(0, -1).pop();
         if (!projectDir) continue;
 
         const folder = projectDirToFolder(projectDir);
@@ -141,7 +112,7 @@ function discoverSessionsPaginated(limit: number, offset: number): {
           folder,
           filePath,
           createdAt: st.birthtime,
-          updatedAt: st.mtime
+          updatedAt: st.mtime,
         });
       } catch {
         continue;
@@ -150,7 +121,7 @@ function discoverSessionsPaginated(limit: number, offset: number): {
 
     return { sessions: results, total };
   } catch (error) {
-    console.error('Error in optimized session discovery:', error);
+    console.error("Error in optimized session discovery:", error);
     // Fallback to Node.js method if find command fails
     return discoverAllSessionsFallback(limit, offset);
   }
@@ -159,7 +130,10 @@ function discoverSessionsPaginated(limit: number, offset: number): {
 /**
  * Fallback method that mimics original behavior
  */
-function discoverAllSessionsFallback(limit?: number, offset?: number): {
+function discoverAllSessionsFallback(
+  limit?: number,
+  offset?: number,
+): {
   sessions: { sessionId: string; folder: string; filePath: string; createdAt: Date; updatedAt: Date }[];
   total: number;
 } {
@@ -169,16 +143,20 @@ function discoverAllSessionsFallback(limit?: number, offset?: number): {
     try {
       const dirStat = statSync(dirPath);
       if (!dirStat.isDirectory()) continue;
-    } catch { continue; }
+    } catch {
+      continue;
+    }
     const folder = projectDirToFolder(dir);
     for (const file of readdirSync(dirPath)) {
-      if (!file.endsWith('.jsonl')) continue;
-      const sessionId = file.replace('.jsonl', '');
+      if (!file.endsWith(".jsonl")) continue;
+      const sessionId = file.replace(".jsonl", "");
       const filePath = join(dirPath, file);
       try {
         const st = statSync(filePath);
         results.push({ sessionId, folder, filePath, createdAt: st.birthtime, updatedAt: st.mtime });
-      } catch { continue; }
+      } catch {
+        continue;
+      }
     }
   }
   results.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
@@ -186,7 +164,7 @@ function discoverAllSessionsFallback(limit?: number, offset?: number): {
   const total = results.length;
 
   // Apply pagination if specified
-  if (typeof limit === 'number' && typeof offset === 'number') {
+  if (typeof limit === "number" && typeof offset === "number") {
     const paginatedResults = results.slice(offset, offset + limit);
     return { sessions: paginatedResults, total };
   }
@@ -195,14 +173,14 @@ function discoverAllSessionsFallback(limit?: number, offset?: number): {
 }
 
 // List all chats (pull from log directories, augment with file storage data)
-chatsRouter.get('/', (req, res) => {
+chatsRouter.get("/", (req, res) => {
   try {
     // Get all file chats for augmentation lookup (may be empty if no file storage)
     let fileChats: any[] = [];
     try {
       fileChats = chatFileService.getAllChats() || [];
     } catch (err) {
-      console.error('Error reading file chats, continuing with filesystem only:', err);
+      console.error("Error reading file chats, continuing with filesystem only:", err);
     }
 
     // Create lookup map for file data by session ID
@@ -216,7 +194,7 @@ chatsRouter.get('/', (req, res) => {
 
       // Also index by session_ids in metadata
       try {
-        const meta = JSON.parse(chat?.metadata || '{}');
+        const meta = JSON.parse(chat?.metadata || "{}");
         if (Array.isArray(meta.session_ids)) {
           for (const sid of meta.session_ids) {
             fileChatsBySessionId.set(sid, chat);
@@ -231,7 +209,7 @@ chatsRouter.get('/', (req, res) => {
 
     // Use optimized pagination to discover only the sessions we need
     const { sessions: paginatedSessions, total } = discoverSessionsPaginated(limit, offset);
-    const chatsFromLogs = paginatedSessions.map(s => {
+    const chatsFromLogs = paginatedSessions.map((s) => {
       // Try to find by session ID (may not exist in file storage - that's fine)
       const fileChat = fileChatsBySessionId.get(s.sessionId);
 
@@ -254,7 +232,7 @@ chatsRouter.get('/', (req, res) => {
           // Merge session_ids in metadata
           metadata: (() => {
             try {
-              const meta = JSON.parse(fileChat.metadata || '{}');
+              const meta = JSON.parse(fileChat.metadata || "{}");
               const sessionIds = Array.isArray(meta.session_ids) ? meta.session_ids : [];
               if (!sessionIds.includes(s.sessionId)) {
                 sessionIds.push(s.sessionId);
@@ -290,22 +268,22 @@ chatsRouter.get('/', (req, res) => {
     res.json({
       chats: chatsFromLogs,
       hasMore,
-      total
+      total,
     });
   } catch (err: any) {
-    console.error('Error listing chats:', err);
-    res.status(500).json({ error: 'Failed to list chats', details: err.message });
+    console.error("Error listing chats:", err);
+    res.status(500).json({ error: "Failed to list chats", details: err.message });
   }
 });
 
 // Get folder info for new chat (without creating a chat)
-chatsRouter.get('/new/info', (req, res) => {
+chatsRouter.get("/new/info", (req, res) => {
   const folder = req.query.folder as string;
-  if (!folder) return res.status(400).json({ error: 'folder query param is required' });
+  if (!folder) return res.status(400).json({ error: "folder query param is required" });
 
   // Check if folder exists
   if (!existsSync(folder)) {
-    return res.status(400).json({ error: 'folder does not exist' });
+    return res.status(400).json({ error: "folder does not exist" });
   }
 
   // Get git info for the folder
@@ -333,14 +311,14 @@ chatsRouter.get('/new/info', (req, res) => {
 });
 
 // Create a chat (only when sessionId is known - for resuming sessions)
-chatsRouter.post('/', (req, res) => {
+chatsRouter.post("/", (req, res) => {
   const { folder, sessionId, defaultPermissions } = req.body;
-  if (!folder) return res.status(400).json({ error: 'folder is required' });
-  if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
+  if (!folder) return res.status(400).json({ error: "folder is required" });
+  if (!sessionId) return res.status(400).json({ error: "sessionId is required" });
 
   // Create metadata with default permissions if provided
   const metadata = {
-    ...(defaultPermissions && { defaultPermissions })
+    ...(defaultPermissions && { defaultPermissions }),
   };
 
   // Get git info for the folder
@@ -373,20 +351,20 @@ chatsRouter.post('/', (req, res) => {
 });
 
 // Delete a chat (only deletes from file storage if it exists there)
-chatsRouter.delete('/:id', (req, res) => {
+chatsRouter.delete("/:id", (req, res) => {
   try {
     const chat = chatFileService.getChat(req.params.id);
     if (chat) {
       const deleted = chatFileService.deleteChat(chat.session_id);
       if (!deleted) {
-        return res.status(500).json({ error: 'Failed to delete chat from storage' });
+        return res.status(500).json({ error: "Failed to delete chat from storage" });
       }
     }
     // Even if chat wasn't in file storage, return success (it may only exist in filesystem)
     res.json({ ok: true });
   } catch (err: any) {
-    console.error('Error deleting chat:', err);
-    res.status(500).json({ error: 'Failed to delete chat', details: err.message });
+    console.error("Error deleting chat:", err);
+    res.status(500).json({ error: "Failed to delete chat", details: err.message });
   }
 });
 
@@ -401,7 +379,7 @@ function findChat(id: string): any | null {
     try {
       fileChat = chatFileService.getChat(id);
     } catch (err) {
-      console.error('Error reading chat from file storage:', err);
+      console.error("Error reading chat from file storage:", err);
     }
 
     if (fileChat) {
@@ -422,8 +400,8 @@ function findChat(id: string): any | null {
     const logPath = findSessionLogPath(id);
     if (!logPath) return null;
 
-    const projectDir = join(logPath, '..');
-    const dirName = projectDir.split('/').pop()!;
+    const projectDir = join(logPath, "..");
+    const dirName = projectDir.split("/").pop()!;
     const st = statSync(logPath);
     const folder = projectDirToFolder(dirName);
     let gitInfo: { isGitRepo: boolean; branch?: string } = { isGitRepo: false };
@@ -444,15 +422,15 @@ function findChat(id: string): any | null {
       _from_filesystem: true,
     };
   } catch (err) {
-    console.error('Error finding chat:', err);
+    console.error("Error finding chat:", err);
     return null;
   }
 }
 
 // Get a single chat
-chatsRouter.get('/:id', (req, res) => {
+chatsRouter.get("/:id", (req, res) => {
   const chat = findChat(req.params.id) as any;
-  if (!chat) return res.status(404).json({ error: 'Not found' });
+  if (!chat) return res.status(404).json({ error: "Not found" });
 
   // Include slash commands and plugins for the chat's folder
   let slashCommands: any[] = [];
@@ -474,10 +452,16 @@ chatsRouter.get('/:id', (req, res) => {
 
 function readJsonlFile(path: string): any[] {
   try {
-    return readFileSync(path, 'utf-8')
-      .split('\n')
-      .filter(line => line.trim())
-      .map(line => { try { return JSON.parse(line); } catch { return null; } })
+    return readFileSync(path, "utf-8")
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
       .filter(Boolean);
   } catch {
     return [];
@@ -485,13 +469,13 @@ function readJsonlFile(path: string): any[] {
 }
 
 // Get messages from SDK session JSONL files (all sessions for this chat)
-chatsRouter.get('/:id/messages', (req, res) => {
+chatsRouter.get("/:id/messages", (req, res) => {
   const chat = findChat(req.params.id) as any;
-  if (!chat) return res.status(404).json({ error: 'Not found' });
+  if (!chat) return res.status(404).json({ error: "Not found" });
   if (!chat.session_id) return res.json([]);
 
   // Collect all session IDs from metadata + current
-  const meta = JSON.parse(chat.metadata || '{}');
+  const meta = JSON.parse(chat.metadata || "{}");
   const sessionIds: string[] = meta.session_ids || [];
   if (!sessionIds.includes(chat.session_id)) sessionIds.push(chat.session_id);
 
@@ -509,18 +493,18 @@ chatsRouter.get('/:id/messages', (req, res) => {
 });
 
 // Get slash commands and plugins for a chat
-chatsRouter.get('/:id/slash-commands', (req, res) => {
+chatsRouter.get("/:id/slash-commands", (req, res) => {
   const chat = findChat(req.params.id) as any;
-  if (!chat) return res.status(404).json({ error: 'Not found' });
+  if (!chat) return res.status(404).json({ error: "Not found" });
 
   try {
     const result = getCommandsAndPluginsForDirectory(chat.folder);
 
     // Check if activePlugins query param is provided
     const activePluginIds = req.query.activePlugins
-      ? (Array.isArray(req.query.activePlugins)
-          ? req.query.activePlugins as string[]
-          : [req.query.activePlugins as string])
+      ? Array.isArray(req.query.activePlugins)
+        ? (req.query.activePlugins as string[])
+        : [req.query.activePlugins as string]
       : [];
 
     // Get all commands including active plugin commands
@@ -529,17 +513,17 @@ chatsRouter.get('/:id/slash-commands', (req, res) => {
     res.json({
       slashCommands: result.slashCommands,
       plugins: result.plugins,
-      allCommands
+      allCommands,
     });
   } catch (error) {
-    console.error('Failed to get slash commands and plugins:', error);
+    console.error("Failed to get slash commands and plugins:", error);
     res.json({ slashCommands: [], plugins: [], allCommands: [] });
   }
 });
 
 interface ParsedMessage {
-  role: 'user' | 'assistant';
-  type: 'text' | 'thinking' | 'tool_use' | 'tool_result';
+  role: "user" | "assistant";
+  type: "text" | "thinking" | "tool_use" | "tool_result";
   content: string;
   toolName?: string;
   toolUseId?: string;
@@ -548,15 +532,15 @@ interface ParsedMessage {
 }
 
 function extractToolResultContent(block: any): string {
-  if (typeof block.content === 'string') return block.content;
+  if (typeof block.content === "string") return block.content;
   if (Array.isArray(block.content)) {
     return block.content
       .map((c: any) => {
-        if (typeof c === 'string') return c;
-        if (c.type === 'text') return c.text;
+        if (typeof c === "string") return c;
+        if (c.type === "text") return c.text;
         return JSON.stringify(c);
       })
-      .join('\n');
+      .join("\n");
   }
   return JSON.stringify(block.content);
 }
@@ -566,16 +550,16 @@ function parseMessages(rawMessages: any[]): ParsedMessage[] {
 
   for (const msg of rawMessages) {
     // Skip summary/metadata lines
-    if (msg.type === 'summary' || msg.type === 'queue-operation') continue;
+    if (msg.type === "summary" || msg.type === "queue-operation") continue;
 
-    const role: 'user' | 'assistant' = msg.message?.role || msg.type;
+    const role: "user" | "assistant" = msg.message?.role || msg.type;
     const content = msg.message?.content || msg.content;
     const timestamp = msg.timestamp;
     const teamName = msg.teamName;
     if (!content) continue;
 
-    if (typeof content === 'string') {
-      result.push({ role, type: 'text', content, timestamp, ...(teamName && { teamName }) });
+    if (typeof content === "string") {
+      result.push({ role, type: "text", content, timestamp, ...(teamName && { teamName }) });
       continue;
     }
 
@@ -583,26 +567,26 @@ function parseMessages(rawMessages: any[]): ParsedMessage[] {
 
     for (const block of content) {
       switch (block.type) {
-        case 'text':
-          if (block.text) result.push({ role, type: 'text', content: block.text, timestamp, ...(teamName && { teamName }) });
+        case "text":
+          if (block.text) result.push({ role, type: "text", content: block.text, timestamp, ...(teamName && { teamName }) });
           break;
-        case 'thinking':
-          result.push({ role: 'assistant', type: 'thinking', content: block.thinking || '', timestamp });
+        case "thinking":
+          result.push({ role: "assistant", type: "thinking", content: block.thinking || "", timestamp });
           break;
-        case 'tool_use':
+        case "tool_use":
           result.push({
-            role: 'assistant',
-            type: 'tool_use',
+            role: "assistant",
+            type: "tool_use",
             content: JSON.stringify(block.input),
             toolName: block.name,
             toolUseId: block.id,
             timestamp,
           });
           break;
-        case 'tool_result':
+        case "tool_result":
           result.push({
-            role: 'assistant',
-            type: 'tool_result',
+            role: "assistant",
+            type: "tool_result",
             content: extractToolResultContent(block),
             toolName: block.tool_use_id,
             toolUseId: block.tool_use_id,
