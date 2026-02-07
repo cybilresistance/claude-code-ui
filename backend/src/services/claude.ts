@@ -1,30 +1,28 @@
-import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
-import { EventEmitter } from 'events';
-import { appendFileSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { chatFileService } from './chat-file-service.js';
-import { setSlashCommandsForDirectory } from './slashCommands.js';
-import { getPluginsForDirectory, type Plugin } from './plugins.js';
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import type { PermissionResult } from "@anthropic-ai/claude-agent-sdk";
+import { EventEmitter } from "events";
+import { appendFileSync, mkdirSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+import { chatFileService } from "./chat-file-service.js";
+import { setSlashCommandsForDirectory } from "./slashCommands.js";
+import { getPluginsForDirectory, type Plugin } from "./plugins.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const logDir = join(__dirname, '../../logs');
+const logDir = join(__dirname, "../../logs");
 mkdirSync(logDir, { recursive: true });
-const debugLogFile = join(logDir, 'slash-commands-debug.log');
+const debugLogFile = join(logDir, "slash-commands-debug.log");
 
 function logDebug(message: string, data?: any) {
   const timestamp = new Date().toISOString();
-  const logEntry = data
-    ? `[${timestamp}] ${message}\n${JSON.stringify(data, null, 2)}\n\n`
-    : `[${timestamp}] ${message}\n\n`;
+  const logEntry = data ? `[${timestamp}] ${message}\n${JSON.stringify(data, null, 2)}\n\n` : `[${timestamp}] ${message}\n\n`;
 
+  console.log(`[SLASH-DEBUG] ${message}`, data || "");
   appendFileSync(debugLogFile, logEntry);
 }
 
 export interface StreamEvent {
-  type: 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'done' | 'error'
-    | 'permission_request' | 'user_question' | 'plan_review' | 'chat_created';
+  type: "text" | "thinking" | "tool_use" | "tool_result" | "done" | "error" | "permission_request" | "user_question" | "plan_review" | "chat_created";
   content: string;
   toolName?: string;
   input?: Record<string, unknown>;
@@ -38,7 +36,7 @@ interface PendingRequest {
   toolName: string;
   input: Record<string, unknown>;
   suggestions?: unknown[];
-  eventType: 'permission_request' | 'user_question' | 'plan_review';
+  eventType: "permission_request" | "user_question" | "plan_review";
   eventData: Record<string, unknown>;
   resolve: (result: PermissionResult) => void;
 }
@@ -64,17 +62,17 @@ function buildPluginOptions(folder: string, activePluginIds?: string[]): any[] {
     const activePlugins = plugins.filter((p: Plugin) => activePluginIds.includes(p.id));
 
     return activePlugins.map((plugin: Plugin) => ({
-      type: 'local',
+      type: "local",
       path: plugin.manifest.source,
-      name: plugin.manifest.name
+      name: plugin.manifest.name,
     }));
   } catch (error) {
-    console.warn('Failed to build plugin options:', error);
+    console.warn("Failed to build plugin options:", error);
     return [];
   }
 }
 
-type PermissionLevel = 'allow' | 'ask' | 'deny';
+type PermissionLevel = "allow" | "ask" | "deny";
 
 interface DefaultPermissions {
   fileRead: PermissionLevel;
@@ -102,8 +100,8 @@ function migratePermissions(permissions: any): DefaultPermissions | null {
     return {
       fileRead: permissions.fileOperations,
       fileWrite: permissions.fileOperations,
-      codeExecution: permissions.codeExecution || 'ask',
-      webAccess: permissions.webAccess || 'ask',
+      codeExecution: permissions.codeExecution || "ask",
+      webAccess: permissions.webAccess || "ask",
     };
   }
 
@@ -112,32 +110,34 @@ function migratePermissions(permissions: any): DefaultPermissions | null {
 
 function categorizeToolPermission(toolName: string): keyof DefaultPermissions | null {
   // File read operations (read-only)
-  if (['Read', 'Glob', 'Grep'].includes(toolName)) {
-    return 'fileRead';
+  if (["Read", "Glob", "Grep"].includes(toolName)) {
+    return "fileRead";
   }
 
   // File write operations (create, modify)
-  if (['Write', 'Edit', 'MultiEdit'].includes(toolName)) {
-    return 'fileWrite';
+  if (["Write", "Edit", "MultiEdit"].includes(toolName)) {
+    return "fileWrite";
   }
 
   // Code execution (bash commands, notebooks, shell management)
-  if (['Bash', 'NotebookEdit', 'KillShell'].includes(toolName)) {
-    return 'codeExecution';
+  if (["Bash", "NotebookEdit", "KillShell"].includes(toolName)) {
+    return "codeExecution";
   }
 
   // Web access
-  if (['WebFetch', 'WebSearch'].includes(toolName)) {
-    return 'webAccess';
+  if (["WebFetch", "WebSearch"].includes(toolName)) {
+    return "webAccess";
   }
 
   // Tools that don't need permission checks (always allowed)
-  if (['TodoWrite', 'Task', 'ExitPlanMode', 'AskUserQuestion', 'SlashCommand', 'BashOutput', 'Config', 'ListMcpResources', 'ReadMcpResource'].includes(toolName)) {
+  if (
+    ["TodoWrite", "Task", "ExitPlanMode", "AskUserQuestion", "SlashCommand", "BashOutput", "Config", "ListMcpResources", "ReadMcpResource"].includes(toolName)
+  ) {
     return null;
   }
 
   // Default to fileWrite for unknown tools (conservative)
-  return 'fileWrite';
+  return "fileWrite";
 }
 
 export function getActiveSession(chatId: string): ActiveSession | undefined {
@@ -148,31 +148,26 @@ export function hasPendingRequest(chatId: string): boolean {
   return pendingRequests.has(chatId);
 }
 
-export function getPendingRequest(chatId: string): Omit<PendingRequest, 'resolve'> | null {
+export function getPendingRequest(chatId: string): Omit<PendingRequest, "resolve"> | null {
   const p = pendingRequests.get(chatId);
   if (!p) return null;
   const { resolve: _, ...rest } = p;
   return rest;
 }
 
-export function respondToPermission(
-  chatId: string,
-  allow: boolean,
-  updatedInput?: Record<string, unknown>,
-  updatedPermissions?: unknown[],
-): boolean {
+export function respondToPermission(chatId: string, allow: boolean, updatedInput?: Record<string, unknown>, updatedPermissions?: unknown[]): boolean {
   const pending = pendingRequests.get(chatId);
   if (!pending) return false;
   pendingRequests.delete(chatId);
 
   if (allow) {
     pending.resolve({
-      behavior: 'allow',
+      behavior: "allow",
       updatedInput: updatedInput || pending.input,
       updatedPermissions: updatedPermissions as any,
     });
   } else {
-    pending.resolve({ behavior: 'deny', message: 'User denied', interrupt: true });
+    pending.resolve({ behavior: "deny", message: "User denied", interrupt: true });
   }
   return true;
 }
@@ -188,9 +183,14 @@ export function stopSession(chatId: string): boolean {
   return false;
 }
 
-export async function sendMessage(chatId: string, prompt: string | any, imageMetadata?: { buffer: Buffer; mimeType: string }[], activePlugins?: string[]): Promise<EventEmitter> {
+export async function sendMessage(
+  chatId: string,
+  prompt: string | any,
+  imageMetadata?: { buffer: Buffer; mimeType: string }[],
+  activePlugins?: string[],
+): Promise<EventEmitter> {
   const chat = chatFileService.getChat(chatId);
-  if (!chat) throw new Error('Chat not found');
+  if (!chat) throw new Error("Chat not found");
 
   // Stop any existing session for this chat (web or CLI monitoring)
   stopSession(chatId);
@@ -212,22 +212,22 @@ export async function sendMessage(chatId: string, prompt: string | any, imageMet
     // Add text content if present
     if (prompt && prompt.trim()) {
       content.push({
-        type: 'text',
-        text: prompt.trim()
+        type: "text",
+        text: prompt.trim(),
       });
     }
 
     // Add image content blocks
     for (const { buffer, mimeType } of imageMetadata) {
-      const base64 = buffer.toString('base64');
+      const base64 = buffer.toString("base64");
       console.log(`[DEBUG] Adding image: mimeType=${mimeType}, base64Length=${base64.length}`);
       content.push({
-        type: 'image',
+        type: "image",
         source: {
-          type: 'base64',
+          type: "base64",
           media_type: mimeType,
-          data: base64
-        }
+          data: base64,
+        },
       });
     }
 
@@ -235,15 +235,15 @@ export async function sendMessage(chatId: string, prompt: string | any, imageMet
     // SDKUserMessage has: { type: 'user', message: APIUserMessage, parent_tool_use_id: string | null }
     // APIUserMessage is MessageParam from Anthropic SDK which has { role: 'user', content: ContentBlock[] }
     const sdkMessage = {
-      type: 'user' as const,
+      type: "user" as const,
       message: {
-        role: 'user' as const,
-        content: content
+        role: "user" as const,
+        content: content,
       },
-      parent_tool_use_id: null
+      parent_tool_use_id: null,
     };
 
-    console.log('[DEBUG] SDKMessage structure:',JSON.stringify(sdkMessage, null, 2));
+    console.log("[DEBUG] SDKMessage structure:", JSON.stringify(sdkMessage, null, 2));
 
     // Create an async iterable that yields a single message
     formattedPrompt = (async function* () {
@@ -257,7 +257,7 @@ export async function sendMessage(chatId: string, prompt: string | any, imageMet
     formattedPrompt = prompt;
   }
 
-  console.log('[DEBUG] About to call query() with prompt type:', typeof formattedPrompt);
+  console.log("[DEBUG] About to call query() with prompt type:", typeof formattedPrompt);
 
   const queryOpts: any = {
     prompt: formattedPrompt,
@@ -270,7 +270,7 @@ export async function sendMessage(chatId: string, prompt: string | any, imageMet
       env: {
         ...process.env,
         PATH: process.env.PATH,
-        NODE_PATH: process.env.NODE_PATH
+        NODE_PATH: process.env.NODE_PATH,
       },
       canUseTool: async (
         toolName: string,
@@ -281,18 +281,18 @@ export async function sendMessage(chatId: string, prompt: string | any, imageMet
         const category = categorizeToolPermission(toolName);
         if (category) {
           try {
-            const metadata = JSON.parse(chat.metadata || '{}');
+            const metadata = JSON.parse(chat.metadata || "{}");
             const defaultPermissions = migratePermissions(metadata.defaultPermissions);
 
             if (defaultPermissions && defaultPermissions[category]) {
               const permission = defaultPermissions[category];
 
-              if (permission === 'allow') {
+              if (permission === "allow") {
                 // Auto-approve
-                return { behavior: 'allow', updatedInput: input };
-              } else if (permission === 'deny') {
+                return { behavior: "allow", updatedInput: input };
+              } else if (permission === "deny") {
                 // Auto-deny
-                return { behavior: 'deny', message: `Auto-denied by default ${category} policy`, interrupt: true };
+                return { behavior: "deny", message: `Auto-denied by default ${category} policy`, interrupt: true };
               }
               // If 'ask' or not set, fall through to normal permission flow
             }
@@ -303,46 +303,46 @@ export async function sendMessage(chatId: string, prompt: string | any, imageMet
 
         return new Promise<PermissionResult>((resolve) => {
           // Emit appropriate event type based on tool
-          if (toolName === 'AskUserQuestion') {
-            emitter.emit('event', {
-              type: 'user_question',
-              content: '',
+          if (toolName === "AskUserQuestion") {
+            emitter.emit("event", {
+              type: "user_question",
+              content: "",
               questions: input.questions as unknown[],
             } as StreamEvent);
-          } else if (toolName === 'ExitPlanMode') {
-            emitter.emit('event', {
-              type: 'plan_review',
+          } else if (toolName === "ExitPlanMode") {
+            emitter.emit("event", {
+              type: "plan_review",
               content: JSON.stringify(input),
             } as StreamEvent);
           } else {
-            emitter.emit('event', {
-              type: 'permission_request',
-              content: '',
+            emitter.emit("event", {
+              type: "permission_request",
+              content: "",
               toolName,
               input,
               suggestions,
             } as StreamEvent);
           }
 
-          let eventType: PendingRequest['eventType'];
+          let eventType: PendingRequest["eventType"];
           let eventData: Record<string, unknown>;
-          if (toolName === 'AskUserQuestion') {
-            eventType = 'user_question';
+          if (toolName === "AskUserQuestion") {
+            eventType = "user_question";
             eventData = { questions: input.questions };
-          } else if (toolName === 'ExitPlanMode') {
-            eventType = 'plan_review';
+          } else if (toolName === "ExitPlanMode") {
+            eventType = "plan_review";
             eventData = { content: JSON.stringify(input) };
           } else {
-            eventType = 'permission_request';
+            eventType = "permission_request";
             eventData = { toolName, input, suggestions };
           }
 
           pendingRequests.set(chatId, { toolName, input, suggestions, eventType, eventData, resolve });
 
           // Clean up on abort
-          signal.addEventListener('abort', () => {
+          signal.addEventListener("abort", () => {
             pendingRequests.delete(chatId);
-            resolve({ behavior: 'deny', message: 'Aborted' });
+            resolve({ behavior: "deny", message: "Aborted" });
           });
         });
       },
@@ -353,57 +353,66 @@ export async function sendMessage(chatId: string, prompt: string | any, imageMet
     try {
       let sessionId: string | null = null;
 
-      logDebug('Starting new chat session', { chatId, cwd: chat.folder });
+      logDebug("Starting new chat session", { chatId, cwd: chat.folder });
 
       const conversation = query(queryOpts);
 
       for await (const message of conversation) {
         if (abortController.signal.aborted) break;
 
+        // Debug: Log message structure to understand what we receive
+        logDebug("Received message from Claude SDK", {
+          keys: Object.keys(message),
+          type: (message as any).type,
+          hasSlashCommands: "slash_commands" in message,
+          fullMessage: message,
+        });
+
         // Capture slash commands from system initialization message
-        if ('slash_commands' in message && message.slash_commands) {
+        if ("slash_commands" in message && message.slash_commands) {
           const slashCommands = message.slash_commands as string[];
-          logDebug('Found slash commands in SDK message', slashCommands);
+          logDebug("Found slash commands in SDK message", slashCommands);
           // Save slash commands keyed by directory
           setSlashCommandsForDirectory(chat.folder, slashCommands);
-          logDebug('Updated slash commands for directory', { chatId, folder: chat.folder, slashCommands });
+          logDebug("Updated slash commands for directory", { chatId, folder: chat.folder, slashCommands });
         }
 
-        if ('session_id' in message && message.session_id && !sessionId) {
+        if ("session_id" in message && message.session_id && !sessionId) {
           sessionId = message.session_id as string;
-          const meta = JSON.parse(chat.metadata || '{}');
+          const meta = JSON.parse(chat.metadata || "{}");
           const ids: string[] = meta.session_ids || [];
           if (!ids.includes(sessionId)) ids.push(sessionId);
           meta.session_ids = ids;
           // Use upsert to create file storage entry if it doesn't exist
           chatFileService.upsertChat(chatId, chat.folder, sessionId, {
-            metadata: JSON.stringify(meta)
+            metadata: JSON.stringify(meta),
           });
         }
 
         const blocks = (message as any).message?.content || [];
         for (const block of blocks) {
           switch (block.type) {
-            case 'text':
-              emitter.emit('event', { type: 'text', content: block.text } as StreamEvent);
+            case "text":
+              emitter.emit("event", { type: "text", content: block.text } as StreamEvent);
               break;
-            case 'thinking':
-              emitter.emit('event', { type: 'thinking', content: block.thinking } as StreamEvent);
+            case "thinking":
+              emitter.emit("event", { type: "thinking", content: block.thinking } as StreamEvent);
               break;
-            case 'tool_use':
-              emitter.emit('event', {
-                type: 'tool_use',
+            case "tool_use":
+              emitter.emit("event", {
+                type: "tool_use",
                 content: JSON.stringify(block.input),
                 toolName: block.name,
               } as StreamEvent);
               break;
-            case 'tool_result': {
-              const content = typeof block.content === 'string'
-                ? block.content
-                : Array.isArray(block.content)
-                  ? block.content.map((c: any) => typeof c === 'string' ? c : c.text || JSON.stringify(c)).join('\n')
-                  : JSON.stringify(block.content);
-              emitter.emit('event', { type: 'tool_result', content } as StreamEvent);
+            case "tool_result": {
+              const content =
+                typeof block.content === "string"
+                  ? block.content
+                  : Array.isArray(block.content)
+                    ? block.content.map((c: any) => (typeof c === "string" ? c : c.text || JSON.stringify(c))).join("\n")
+                    : JSON.stringify(block.content);
+              emitter.emit("event", { type: "tool_result", content } as StreamEvent);
               break;
             }
           }
@@ -411,10 +420,10 @@ export async function sendMessage(chatId: string, prompt: string | any, imageMet
       }
 
       chatFileService.updateChat(chatId, {});
-      emitter.emit('event', { type: 'done', content: '' } as StreamEvent);
+      emitter.emit("event", { type: "done", content: "" } as StreamEvent);
     } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        emitter.emit('event', { type: 'error', content: err.message } as StreamEvent);
+      if (err.name !== "AbortError") {
+        emitter.emit("event", { type: "error", content: err.message } as StreamEvent);
       }
     } finally {
       activeSessions.delete(chatId);
@@ -434,7 +443,7 @@ export async function sendNewMessage(
   prompt: string,
   defaultPermissions?: DefaultPermissions,
   imageMetadata?: { buffer: Buffer; mimeType: string }[],
-  activePlugins?: string[]
+  activePlugins?: string[],
 ): Promise<EventEmitter> {
   const emitter = new EventEmitter();
   const abortController = new AbortController();
@@ -449,27 +458,29 @@ export async function sendNewMessage(
   if (imageMetadata && imageMetadata.length > 0) {
     const content: any[] = [];
     if (prompt && prompt.trim()) {
-      content.push({ type: 'text', text: prompt.trim() });
+      content.push({ type: "text", text: prompt.trim() });
     }
     for (const { buffer, mimeType } of imageMetadata) {
-      const base64 = buffer.toString('base64');
+      const base64 = buffer.toString("base64");
       content.push({
-        type: 'image',
-        source: { type: 'base64', media_type: mimeType, data: base64 }
+        type: "image",
+        source: { type: "base64", media_type: mimeType, data: base64 },
       });
     }
     const sdkMessage = {
-      type: 'user' as const,
-      message: { role: 'user' as const, content },
-      parent_tool_use_id: null
+      type: "user" as const,
+      message: { role: "user" as const, content },
+      parent_tool_use_id: null,
     };
-    formattedPrompt = (async function* () { yield sdkMessage; })();
+    formattedPrompt = (async function* () {
+      yield sdkMessage;
+    })();
   } else {
     formattedPrompt = prompt;
   }
 
   const metadata = {
-    ...(defaultPermissions && { defaultPermissions })
+    ...(defaultPermissions && { defaultPermissions }),
   };
 
   const queryOpts: any = {
@@ -482,7 +493,7 @@ export async function sendNewMessage(
       env: {
         ...process.env,
         PATH: process.env.PATH,
-        NODE_PATH: process.env.NODE_PATH
+        NODE_PATH: process.env.NODE_PATH,
       },
       canUseTool: async (
         toolName: string,
@@ -493,53 +504,53 @@ export async function sendNewMessage(
         const migratedPermissions = migratePermissions(defaultPermissions);
         if (category && migratedPermissions && migratedPermissions[category]) {
           const permission = migratedPermissions[category];
-          if (permission === 'allow') {
-            return { behavior: 'allow', updatedInput: input };
-          } else if (permission === 'deny') {
-            return { behavior: 'deny', message: `Auto-denied by default ${category} policy`, interrupt: true };
+          if (permission === "allow") {
+            return { behavior: "allow", updatedInput: input };
+          } else if (permission === "deny") {
+            return { behavior: "deny", message: `Auto-denied by default ${category} policy`, interrupt: true };
           }
         }
 
         return new Promise<PermissionResult>((resolve) => {
-          if (toolName === 'AskUserQuestion') {
-            emitter.emit('event', {
-              type: 'user_question',
-              content: '',
+          if (toolName === "AskUserQuestion") {
+            emitter.emit("event", {
+              type: "user_question",
+              content: "",
               questions: input.questions as unknown[],
             } as StreamEvent);
-          } else if (toolName === 'ExitPlanMode') {
-            emitter.emit('event', {
-              type: 'plan_review',
+          } else if (toolName === "ExitPlanMode") {
+            emitter.emit("event", {
+              type: "plan_review",
               content: JSON.stringify(input),
             } as StreamEvent);
           } else {
-            emitter.emit('event', {
-              type: 'permission_request',
-              content: '',
+            emitter.emit("event", {
+              type: "permission_request",
+              content: "",
               toolName,
               input,
               suggestions,
             } as StreamEvent);
           }
 
-          let eventType: PendingRequest['eventType'];
+          let eventType: PendingRequest["eventType"];
           let eventData: Record<string, unknown>;
-          if (toolName === 'AskUserQuestion') {
-            eventType = 'user_question';
+          if (toolName === "AskUserQuestion") {
+            eventType = "user_question";
             eventData = { questions: input.questions };
-          } else if (toolName === 'ExitPlanMode') {
-            eventType = 'plan_review';
+          } else if (toolName === "ExitPlanMode") {
+            eventType = "plan_review";
             eventData = { content: JSON.stringify(input) };
           } else {
-            eventType = 'permission_request';
+            eventType = "permission_request";
             eventData = { toolName, input, suggestions };
           }
 
           pendingRequests.set(tempId, { toolName, input, suggestions, eventType, eventData, resolve });
 
-          signal.addEventListener('abort', () => {
+          signal.addEventListener("abort", () => {
             pendingRequests.delete(tempId);
-            resolve({ behavior: 'deny', message: 'Aborted' });
+            resolve({ behavior: "deny", message: "Aborted" });
           });
         });
       },
@@ -551,7 +562,7 @@ export async function sendNewMessage(
       let sessionId: string | null = null;
       let chatId: string | null = null;
 
-      logDebug('Starting new chat session (new chat flow)', { folder });
+      logDebug("Starting new chat session (new chat flow)", { folder });
 
       const conversation = query(queryOpts);
 
@@ -559,19 +570,19 @@ export async function sendNewMessage(
         if (abortController.signal.aborted) break;
 
         // Capture slash commands from system initialization message
-        if ('slash_commands' in message && message.slash_commands) {
+        if ("slash_commands" in message && message.slash_commands) {
           const slashCommands = message.slash_commands as string[];
           setSlashCommandsForDirectory(folder, slashCommands);
         }
 
         // Create the chat when we receive session_id
-        if ('session_id' in message && message.session_id && !sessionId) {
+        if ("session_id" in message && message.session_id && !sessionId) {
           sessionId = message.session_id as string;
           chatId = sessionId; // Use session_id as the chat ID
 
           const meta = { ...metadata, session_ids: [sessionId] };
           const chat = chatFileService.upsertChat(sessionId, folder, sessionId, {
-            metadata: JSON.stringify(meta)
+            metadata: JSON.stringify(meta),
           });
 
           // Move the session tracking from tempId to the real chatId
@@ -586,40 +597,41 @@ export async function sendNewMessage(
           }
 
           // Emit chat_created event so frontend can navigate
-          emitter.emit('event', {
-            type: 'chat_created',
-            content: '',
+          emitter.emit("event", {
+            type: "chat_created",
+            content: "",
             chatId: sessionId,
             chat: {
               ...chat,
               session_id: sessionId,
-            }
+            },
           } as StreamEvent);
         }
 
         const blocks = (message as any).message?.content || [];
         for (const block of blocks) {
           switch (block.type) {
-            case 'text':
-              emitter.emit('event', { type: 'text', content: block.text } as StreamEvent);
+            case "text":
+              emitter.emit("event", { type: "text", content: block.text } as StreamEvent);
               break;
-            case 'thinking':
-              emitter.emit('event', { type: 'thinking', content: block.thinking } as StreamEvent);
+            case "thinking":
+              emitter.emit("event", { type: "thinking", content: block.thinking } as StreamEvent);
               break;
-            case 'tool_use':
-              emitter.emit('event', {
-                type: 'tool_use',
+            case "tool_use":
+              emitter.emit("event", {
+                type: "tool_use",
                 content: JSON.stringify(block.input),
                 toolName: block.name,
               } as StreamEvent);
               break;
-            case 'tool_result': {
-              const content = typeof block.content === 'string'
-                ? block.content
-                : Array.isArray(block.content)
-                  ? block.content.map((c: any) => typeof c === 'string' ? c : c.text || JSON.stringify(c)).join('\n')
-                  : JSON.stringify(block.content);
-              emitter.emit('event', { type: 'tool_result', content } as StreamEvent);
+            case "tool_result": {
+              const content =
+                typeof block.content === "string"
+                  ? block.content
+                  : Array.isArray(block.content)
+                    ? block.content.map((c: any) => (typeof c === "string" ? c : c.text || JSON.stringify(c))).join("\n")
+                    : JSON.stringify(block.content);
+              emitter.emit("event", { type: "tool_result", content } as StreamEvent);
               break;
             }
           }
@@ -629,10 +641,10 @@ export async function sendNewMessage(
       if (chatId) {
         chatFileService.updateChat(chatId, {});
       }
-      emitter.emit('event', { type: 'done', content: '' } as StreamEvent);
+      emitter.emit("event", { type: "done", content: "" } as StreamEvent);
     } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        emitter.emit('event', { type: 'error', content: err.message } as StreamEvent);
+      if (err.name !== "AbortError") {
+        emitter.emit("event", { type: "error", content: err.message } as StreamEvent);
       }
     } finally {
       activeSessions.delete(tempId);
@@ -645,7 +657,7 @@ export async function sendNewMessage(
 
 export async function sendSlashCommand(chatId: string, command: string, activePlugins?: string[]): Promise<EventEmitter> {
   const chat = chatFileService.getChat(chatId);
-  if (!chat) throw new Error('Chat not found');
+  if (!chat) throw new Error("Chat not found");
 
   // Stop any existing session for this chat
   stopSession(chatId);
@@ -671,16 +683,16 @@ export async function sendSlashCommand(chatId: string, command: string, activePl
         const category = categorizeToolPermission(toolName);
         if (category) {
           try {
-            const metadata = JSON.parse(chat.metadata || '{}');
+            const metadata = JSON.parse(chat.metadata || "{}");
             const defaultPermissions = migratePermissions(metadata.defaultPermissions);
 
             if (defaultPermissions && defaultPermissions[category]) {
               const permission = defaultPermissions[category];
 
-              if (permission === 'allow') {
-                return { behavior: 'allow', updatedInput: input };
-              } else if (permission === 'deny') {
-                return { behavior: 'deny', message: `Auto-denied by default ${category} policy`, interrupt: true };
+              if (permission === "allow") {
+                return { behavior: "allow", updatedInput: input };
+              } else if (permission === "deny") {
+                return { behavior: "deny", message: `Auto-denied by default ${category} policy`, interrupt: true };
               }
             }
           } catch {
@@ -689,45 +701,45 @@ export async function sendSlashCommand(chatId: string, command: string, activePl
         }
 
         return new Promise<PermissionResult>((resolve) => {
-          if (toolName === 'AskUserQuestion') {
-            emitter.emit('event', {
-              type: 'user_question',
-              content: '',
+          if (toolName === "AskUserQuestion") {
+            emitter.emit("event", {
+              type: "user_question",
+              content: "",
               questions: input.questions as unknown[],
             } as StreamEvent);
-          } else if (toolName === 'ExitPlanMode') {
-            emitter.emit('event', {
-              type: 'plan_review',
+          } else if (toolName === "ExitPlanMode") {
+            emitter.emit("event", {
+              type: "plan_review",
               content: JSON.stringify(input),
             } as StreamEvent);
           } else {
-            emitter.emit('event', {
-              type: 'permission_request',
-              content: '',
+            emitter.emit("event", {
+              type: "permission_request",
+              content: "",
               toolName,
               input,
               suggestions,
             } as StreamEvent);
           }
 
-          let eventType: PendingRequest['eventType'];
+          let eventType: PendingRequest["eventType"];
           let eventData: Record<string, unknown>;
-          if (toolName === 'AskUserQuestion') {
-            eventType = 'user_question';
+          if (toolName === "AskUserQuestion") {
+            eventType = "user_question";
             eventData = { questions: input.questions };
-          } else if (toolName === 'ExitPlanMode') {
-            eventType = 'plan_review';
+          } else if (toolName === "ExitPlanMode") {
+            eventType = "plan_review";
             eventData = { content: JSON.stringify(input) };
           } else {
-            eventType = 'permission_request';
+            eventType = "permission_request";
             eventData = { toolName, input, suggestions };
           }
 
           pendingRequests.set(chatId, { toolName, input, suggestions, eventType, eventData, resolve });
 
-          signal.addEventListener('abort', () => {
+          signal.addEventListener("abort", () => {
             pendingRequests.delete(chatId);
-            resolve({ behavior: 'deny', message: 'Aborted' });
+            resolve({ behavior: "deny", message: "Aborted" });
           });
         });
       },
@@ -738,57 +750,66 @@ export async function sendSlashCommand(chatId: string, command: string, activePl
     try {
       let sessionId: string | null = null;
 
-      logDebug('Starting new chat session', { chatId, cwd: chat.folder });
+      logDebug("Starting new chat session", { chatId, cwd: chat.folder });
 
       const conversation = query(queryOpts);
 
       for await (const message of conversation) {
         if (abortController.signal.aborted) break;
 
+        // Debug: Log message structure to understand what we receive
+        logDebug("Received message from Claude SDK", {
+          keys: Object.keys(message),
+          type: (message as any).type,
+          hasSlashCommands: "slash_commands" in message,
+          fullMessage: message,
+        });
+
         // Capture slash commands from system initialization message
-        if ('slash_commands' in message && message.slash_commands) {
+        if ("slash_commands" in message && message.slash_commands) {
           const slashCommands = message.slash_commands as string[];
-          logDebug('Found slash commands in SDK message', slashCommands);
+          logDebug("Found slash commands in SDK message", slashCommands);
           // Save slash commands keyed by directory
           setSlashCommandsForDirectory(chat.folder, slashCommands);
-          logDebug('Updated slash commands for directory', { chatId, folder: chat.folder, slashCommands });
+          logDebug("Updated slash commands for directory", { chatId, folder: chat.folder, slashCommands });
         }
 
-        if ('session_id' in message && message.session_id && !sessionId) {
+        if ("session_id" in message && message.session_id && !sessionId) {
           sessionId = message.session_id as string;
-          const meta = JSON.parse(chat.metadata || '{}');
+          const meta = JSON.parse(chat.metadata || "{}");
           const ids: string[] = meta.session_ids || [];
           if (!ids.includes(sessionId)) ids.push(sessionId);
           meta.session_ids = ids;
           // Use upsert to create file storage entry if it doesn't exist
           chatFileService.upsertChat(chatId, chat.folder, sessionId, {
-            metadata: JSON.stringify(meta)
+            metadata: JSON.stringify(meta),
           });
         }
 
         const blocks = (message as any).message?.content || [];
         for (const block of blocks) {
           switch (block.type) {
-            case 'text':
-              emitter.emit('event', { type: 'text', content: block.text } as StreamEvent);
+            case "text":
+              emitter.emit("event", { type: "text", content: block.text } as StreamEvent);
               break;
-            case 'thinking':
-              emitter.emit('event', { type: 'thinking', content: block.thinking } as StreamEvent);
+            case "thinking":
+              emitter.emit("event", { type: "thinking", content: block.thinking } as StreamEvent);
               break;
-            case 'tool_use':
-              emitter.emit('event', {
-                type: 'tool_use',
+            case "tool_use":
+              emitter.emit("event", {
+                type: "tool_use",
                 content: JSON.stringify(block.input),
                 toolName: block.name,
               } as StreamEvent);
               break;
-            case 'tool_result': {
-              const content = typeof block.content === 'string'
-                ? block.content
-                : Array.isArray(block.content)
-                  ? block.content.map((c: any) => typeof c === 'string' ? c : c.text || JSON.stringify(c)).join('\n')
-                  : JSON.stringify(block.content);
-              emitter.emit('event', { type: 'tool_result', content } as StreamEvent);
+            case "tool_result": {
+              const content =
+                typeof block.content === "string"
+                  ? block.content
+                  : Array.isArray(block.content)
+                    ? block.content.map((c: any) => (typeof c === "string" ? c : c.text || JSON.stringify(c))).join("\n")
+                    : JSON.stringify(block.content);
+              emitter.emit("event", { type: "tool_result", content } as StreamEvent);
               break;
             }
           }
@@ -796,10 +817,10 @@ export async function sendSlashCommand(chatId: string, command: string, activePl
       }
 
       chatFileService.updateChat(chatId, {});
-      emitter.emit('event', { type: 'done', content: '' } as StreamEvent);
+      emitter.emit("event", { type: "done", content: "" } as StreamEvent);
     } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        emitter.emit('event', { type: 'error', content: err.message } as StreamEvent);
+      if (err.name !== "AbortError") {
+        emitter.emit("event", { type: "error", content: err.message } as StreamEvent);
       }
     } finally {
       activeSessions.delete(chatId);
