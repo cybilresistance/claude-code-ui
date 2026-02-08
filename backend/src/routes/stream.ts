@@ -219,16 +219,46 @@ streamRouter.get("/:id/stream", (req, res) => {
     return;
   }
 
-  // Watch CLI session file for changes
+  // Check if CLI session is already complete before starting file watcher.
+  // Read the tail of the file and look for stop_reason or summary — if found,
+  // the session finished before we connected, so return immediately.
   let lastPosition = 0;
   try {
-    lastPosition = statSync(logPath).size;
+    const fileStats = statSync(logPath);
+    lastPosition = fileStats.size;
+
+    // Read up to last 4KB to check for completion markers
+    const tailSize = Math.min(4096, fileStats.size);
+    const tailBuffer = Buffer.alloc(tailSize);
+    const fd = openSync(logPath, "r");
+    readSync(fd, tailBuffer, 0, tailSize, fileStats.size - tailSize);
+    closeSync(fd);
+
+    const tailContent = tailBuffer.toString("utf-8");
+    const tailLines = tailContent.split("\n");
+    for (let i = tailLines.length - 1; i >= 0; i--) {
+      const line = tailLines[i].trim();
+      if (!line) continue;
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.type === "summary" || parsed.message?.stop_reason) {
+          sendSSE(res, { type: "message_complete" });
+          res.end();
+          return;
+        }
+      } catch {}
+    }
   } catch {}
+
+  // Track last activity time for inactivity timeout
+  let lastActivityTime = Date.now();
+  const CLI_INACTIVITY_TIMEOUT_MS = 120_000; // 2 minutes
 
   const watchHandler = () => {
     try {
       const newStats = statSync(logPath);
       if (newStats.size > lastPosition) {
+        lastActivityTime = Date.now();
         const buffer = Buffer.alloc(newStats.size - lastPosition);
         const fd = openSync(logPath, "r");
         readSync(fd, buffer, 0, buffer.length, lastPosition);
@@ -250,6 +280,12 @@ streamRouter.get("/:id/stream", (req, res) => {
             }
             if (parsed.type === "summary" || parsed.message?.stop_reason) {
               sendSSE(res, { type: "message_complete" });
+              // Session is done — clean up and close
+              unwatchFile(logPath, watchHandler);
+              clearInterval(subagentScanInterval);
+              clearInterval(inactivityCheckInterval);
+              res.end();
+              return;
             }
           } catch (err) {
             console.warn("[CLI Monitor] Failed to parse log line:", err instanceof Error ? err.message : "Unknown error", "Line:", line.slice(0, 100));
@@ -281,6 +317,7 @@ streamRouter.get("/:id/stream", (req, res) => {
           const prevSize = watchedSubagentSizes.get(filePath) ?? 0;
 
           if (stats.size > prevSize) {
+            lastActivityTime = Date.now();
             watchedSubagentSizes.set(filePath, stats.size);
             // Signal the client to refetch messages (which now includes subagent data)
             sendSSE(res, { type: "message_update" });
@@ -290,9 +327,21 @@ streamRouter.get("/:id/stream", (req, res) => {
     } catch {}
   }, 1000);
 
+  // Inactivity timeout: if no new data for CLI_INACTIVITY_TIMEOUT_MS, assume session is done
+  const inactivityCheckInterval = setInterval(() => {
+    if (Date.now() - lastActivityTime > CLI_INACTIVITY_TIMEOUT_MS) {
+      sendSSE(res, { type: "message_complete" });
+      unwatchFile(logPath, watchHandler);
+      clearInterval(subagentScanInterval);
+      clearInterval(inactivityCheckInterval);
+      res.end();
+    }
+  }, 5000);
+
   req.on("close", () => {
     unwatchFile(logPath, watchHandler);
     clearInterval(subagentScanInterval);
+    clearInterval(inactivityCheckInterval);
   });
 });
 
@@ -379,9 +428,9 @@ streamRouter.get("/:id/status", (req, res) => {
     const stats = statSync(logPath);
     const lastModified = stats.mtime.getTime();
     const now = Date.now();
-    const fiveMinutesAgo = now - 5 * 60 * 1000;
+    const recentThreshold = now - 120_000; // 2 minutes
 
-    const isRecentlyActive = lastModified > fiveMinutesAgo;
+    const isRecentlyActive = lastModified > recentThreshold;
 
     res.json({
       active: isRecentlyActive,

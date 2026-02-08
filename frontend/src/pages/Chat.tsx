@@ -108,6 +108,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
   const handleSendRef = useRef<(prompt: string) => void>(() => {});
   const planApprovedRef = useRef(false);
   const tempChatIdRef = useRef<string | null>(null);
+  const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Compute team color map - assigns colors to teams in order of appearance
   const teamColorMap = useMemo(() => {
@@ -184,6 +185,39 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
   const onChatListRefreshRef = useRef(onChatListRefresh);
   onChatListRefreshRef.current = onChatListRefresh;
 
+  // Safety timeout: if streaming is true but no SSE events arrive for 2 minutes,
+  // assume the stream is dead and reset the indicator.
+  const STREAMING_INACTIVITY_TIMEOUT_MS = 120_000; // 2 minutes
+
+  const clearStreamingTimeout = useCallback(() => {
+    if (streamingTimeoutRef.current) {
+      clearTimeout(streamingTimeoutRef.current);
+      streamingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const resetStreamingTimeout = useCallback(() => {
+    clearStreamingTimeout();
+    streamingTimeoutRef.current = setTimeout(() => {
+      setStreaming(false);
+      setInFlightMessage(null);
+      if (abortRef.current) {
+        abortRef.current.abort();
+        abortRef.current = null;
+      }
+    }, STREAMING_INACTIVITY_TIMEOUT_MS);
+  }, [clearStreamingTimeout]);
+
+  // Start/stop the safety timeout when streaming state changes
+  useEffect(() => {
+    if (streaming) {
+      resetStreamingTimeout();
+    } else {
+      clearStreamingTimeout();
+    }
+    return () => clearStreamingTimeout();
+  }, [streaming, resetStreamingTimeout, clearStreamingTimeout]);
+
   // Shared SSE reader that processes notifications and refetches chat data
   const readSSE = useCallback(
     async (body: ReadableStream<Uint8Array>) => {
@@ -212,6 +246,9 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
             if (!line.startsWith("data: ")) continue;
             try {
               const event = JSON.parse(line.slice(6));
+
+              // Reset the safety timeout on every SSE event received
+              resetStreamingTimeout();
 
               // Handle chat_created - fires during new chat creation
               if (event.type === "chat_created" && event.chatId) {
@@ -339,7 +376,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
         }
       }
     },
-    [id],
+    [id, resetStreamingTimeout],
   );
 
   // Connect to an existing SSE stream (e.g. after page refresh)
