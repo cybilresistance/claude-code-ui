@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, RotateCw } from "lucide-react";
+import { ChevronLeft, RotateCw, Loader } from "lucide-react";
 import { getDrafts, deleteDraft, executeDraft, type QueueItem } from "../api";
 
 export default function Queue() {
@@ -8,6 +8,7 @@ export default function Queue() {
   const [drafts, setDrafts] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [executingId, setExecutingId] = useState<string | null>(null);
 
   const loadDrafts = useCallback(async () => {
     try {
@@ -39,11 +40,14 @@ export default function Queue() {
 
   const handleExecuteNow = useCallback(
     async (id: string) => {
+      setExecutingId(id);
       try {
         await executeDraft(id);
         await loadDrafts();
       } catch (err: any) {
         setError(err.message || "Failed to execute draft");
+      } finally {
+        setExecutingId(null);
       }
     },
     [loadDrafts],
@@ -146,28 +150,40 @@ export default function Queue() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
                     <button
                       onClick={() => handleExecuteNow(item.id)}
+                      disabled={executingId === item.id}
                       style={{
-                        background: "var(--accent)",
+                        background: executingId === item.id ? "var(--border)" : "var(--accent)",
                         color: "#fff",
                         padding: "6px 12px",
                         borderRadius: 4,
                         fontSize: 12,
                         border: "none",
-                        cursor: "pointer",
+                        cursor: executingId === item.id ? "default" : "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
                       }}
                     >
-                      Execute Now
+                      {executingId === item.id ? (
+                        <>
+                          <Loader size={12} style={{ animation: "spin 1s linear infinite" }} />
+                          Executing...
+                        </>
+                      ) : (
+                        "Execute Now"
+                      )}
                     </button>
                     <button
                       onClick={() => handleDelete(item.id)}
+                      disabled={executingId === item.id}
                       style={{
-                        background: "var(--danger)",
+                        background: executingId === item.id ? "var(--border)" : "var(--danger)",
                         color: "#fff",
                         padding: "6px 12px",
                         borderRadius: 4,
                         fontSize: 12,
                         border: "none",
-                        cursor: "pointer",
+                        cursor: executingId === item.id ? "default" : "pointer",
                       }}
                     >
                       Delete
