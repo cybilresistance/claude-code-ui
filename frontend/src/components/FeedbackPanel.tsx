@@ -9,6 +9,8 @@ export interface PendingAction {
   questions?: any[];
   suggestions?: any[];
   content?: string;
+  /** True when reconstructed from message history (no live backend session) */
+  stale?: boolean;
 }
 
 interface Props {

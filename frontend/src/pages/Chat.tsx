@@ -45,6 +45,27 @@ interface SingleMessage {
 
 type DisplayItem = ToolGroup | SingleMessage;
 
+/**
+ * Detect if the messages contain an unresolved ExitPlanMode tool_use
+ * (no matching tool_result). This happens when the page is refreshed
+ * after the backend session has ended but before the user approved/rejected.
+ */
+function detectStaleExitPlanMode(messages: ParsedMessage[]): PendingAction | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    // Stop at first user message — unresolved tool_use must be in latest assistant turn
+    if (msg.role === "user") break;
+    if (msg.type === "tool_use" && msg.toolName === "ExitPlanMode") {
+      const hasResult = messages.some((m) => m.type === "tool_result" && m.toolUseId === msg.toolUseId);
+      if (!hasResult) {
+        return { type: "plan_review", content: msg.content, stale: true };
+      }
+      break;
+    }
+  }
+  return null;
+}
+
 interface ChatProps {
   onChatListRefresh?: () => void;
 }
@@ -459,15 +480,22 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
         loadSlashCommands();
       }
     });
-    getMessages(id!).then((msgs) => {
+    Promise.all([getMessages(id!), getPending(id!)]).then(([msgs, pending]) => {
       if (currentIdRef.current !== id) return;
-      setMessages(Array.isArray(msgs) ? msgs : []);
-    });
-    getPending(id!).then((p) => {
-      if (currentIdRef.current !== id) return;
-      if (p) {
-        setPendingAction(p);
+      const messageArray = Array.isArray(msgs) ? msgs : [];
+      setMessages(messageArray);
+
+      if (pending) {
+        setPendingAction(pending);
         setStreaming(true);
+      } else {
+        // Detect stale ExitPlanMode: if the last assistant turn has an unresolved
+        // ExitPlanMode tool_use, reconstruct the plan review panel from message history
+        const stalePlan = detectStaleExitPlanMode(messageArray);
+        if (stalePlan) {
+          setPendingAction(stalePlan);
+          // Don't set streaming=true — no active backend session
+        }
       }
     });
 
@@ -632,11 +660,23 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
   const handleRespond = useCallback(
     async (allow: boolean, updatedInput?: Record<string, unknown>) => {
       const wasReconnect = !abortRef.current; // no active SSE = page was refreshed
+      const currentAction = pendingAction; // Capture before clearing
       setPendingAction(null);
 
       // Use id if available, fall back to tempChatIdRef for new chat mode
       const chatId = id || tempChatIdRef.current;
       if (!chatId) return;
+
+      // Stale plan review: no live backend session to resolve, so start a new
+      // conversation turn with an appropriate message instead
+      if (currentAction?.stale && currentAction.type === "plan_review") {
+        if (allow) {
+          handleSend("Proceed with the plan.");
+        } else {
+          handleSend("I rejected the plan. Please revise it.");
+        }
+        return;
+      }
 
       const result = await respondToChat(chatId, allow, updatedInput);
 
@@ -652,7 +692,7 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
         connectToStream();
       }
     },
-    [id, connectToStream],
+    [id, connectToStream, pendingAction, handleSend],
   );
 
   const handleStop = useCallback(() => {
@@ -669,11 +709,17 @@ export default function Chat({ onChatListRefresh }: ChatProps = {}) {
     setNetworkError(null);
     // Refetch chat data and messages to capture any missing content
     getChat(id!).then(setChat);
-    getMessages(id!).then((msgs) => setMessages(Array.isArray(msgs) ? msgs : []));
-    getPending(id!).then((p) => {
-      if (p) {
-        setPendingAction(p);
+    Promise.all([getMessages(id!), getPending(id!)]).then(([msgs, pending]) => {
+      const messageArray = Array.isArray(msgs) ? msgs : [];
+      setMessages(messageArray);
+      if (pending) {
+        setPendingAction(pending);
         setStreaming(true);
+      } else {
+        const stalePlan = detectStaleExitPlanMode(messageArray);
+        if (stalePlan) {
+          setPendingAction(stalePlan);
+        }
       }
     });
     await checkSessionStatus();
